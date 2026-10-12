@@ -44,7 +44,9 @@ public class GuardianController {
             + "spending limits, loans, EMIs, savings goals and household bills, and gives you the few facts that "
             + "matter most, one per line. "
             + "Rewrite those facts as one short, friendly notice of 2 to 4 plain sentences to the user, saying \"you\". "
-            + "Say the same thing each fact says and keep its meaning: a limit the payment fits is not exceeded. "
+            + "Say the same thing each fact says and keep its meaning. If a fact says the payment goes OVER a "
+            + "limit, say plainly that it goes over that limit and by how much; never call that close to the "
+            + "limit or within it. If the facts say the payment fits, never say a limit is exceeded. "
             + "Copy every number exactly as it is written. Never do arithmetic, and never add a fact, number, "
             + "date or amount that is not in the facts. "
             + "Do not approve, block or tell the user to cancel; the user decides. When a limit is exceeded you "
@@ -122,26 +124,31 @@ public class GuardianController {
         facts.put("recipientName", clip(body.get("recipientName"), 60));
         facts.put("paymentPurpose", clip(body.get("description"), 100));
 
-        return explained(EXPLAIN_SYSTEM, String.join("\n", BudgetRules.paymentBrief(facts)));
+        return explained(EXPLAIN_SYSTEM, String.join("\n", BudgetRules.paymentBrief(facts)),
+                "over".equals(facts.get("budgetStatus")));
     }
 
     /**
-     * Asks the AI to put the facts into words, and only accepts a reply whose numbers all come
-     * from the facts. A second try is allowed; after that the page keeps its rule-based advice.
+     * Asks the AI to put the facts into words. A reply is only accepted when all its numbers come from
+     * the facts and, for a payment, when it agrees with Java's verdict on the limits (overLimit is null
+     * when there is no verdict to check). A second try is allowed; after that the page keeps its
+     * rule-based advice.
      */
-    private ResponseEntity<?> explained(String system, String facts) {
+    private ResponseEntity<?> explained(String system, String facts, Boolean overLimit) {
         try {
             for (int attempt = 1; attempt <= 2; attempt++) {
                 String answer = ask(system, facts, 300).trim();
 
-                if (NumberGuard.onlyKnownNumbers(answer, facts)) {
+                if (NumberGuard.onlyKnownNumbers(answer, facts)
+                        && (overLimit == null || NumberGuard.agreesWithVerdict(answer, overLimit))) {
+
                     Map<String, String> out = new HashMap<>();
                     out.put("advice", answer);
 
                     return ResponseEntity.ok(out);
                 }
 
-                log.warn("The AI wrote a number that is not in the facts (attempt {}). Reply discarded.", attempt);
+                log.warn("The AI reply did not match the calculated facts (attempt {}). Reply discarded.", attempt);
             }
 
             return error(HttpStatus.BAD_GATEWAY, "The AI reply did not match the calculated figures, so it was not shown.");
@@ -178,7 +185,7 @@ public class GuardianController {
         }
 
         try {
-            return explained(FORECAST_SYSTEM, mapper.writeValueAsString(facts));
+            return explained(FORECAST_SYSTEM, mapper.writeValueAsString(facts), null);
 
         } catch (Exception e) {
             log.error("Guardian forecast explanation failed", e);
