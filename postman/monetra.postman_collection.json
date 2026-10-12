@@ -1,0 +1,345 @@
+{
+  "info": {
+    "name": "Monetra API",
+    "description": "Run the requests in order. Log in first: Postman keeps the session cookie for you. Demo accounts exist when MONETRA_SEED_DEMO_USERS=true (see README).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "email",
+      "value": "demo1@monetra.test"
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "expenseId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Log in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('logged in', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Who am I",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/auth/me"
+          }
+        },
+        {
+          "name": "Log out",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Finance data and AI",
+      "item": [
+        {
+          "name": "Load my records",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/data"
+          }
+        },
+        {
+          "name": "Budget check for a payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/guardian/check",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"amountInr\": 400 }"
+            }
+          }
+        },
+        {
+          "name": "Spending forecast",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/guardian/forecast"
+          }
+        },
+        {
+          "name": "AI explains the forecast",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/guardian/forecast/explain"
+          }
+        },
+        {
+          "name": "AI Financial Guardian chat (uses tools)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/agent/chat",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"message\": \"Can I afford 2000 for shoes? Prepare 800 to 9000000002.\" }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Pay with PayPal Sandbox",
+      "item": [
+        {
+          "name": "Search my contacts",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/contacts?q="
+          }
+        },
+        {
+          "name": "Find a recipient by mobile number",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/payments/recipient?phone=9000000002"
+          }
+        },
+        {
+          "name": "Detect a bank from IFSC",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/payments/bank?ifsc=HDFC0001234"
+          }
+        },
+        {
+          "name": "Fraud Guard check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/payments/risk",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"method\": \"PHONE\", \"recipientPhone\": \"9000000002\", \"amountInr\": 880 }"
+            }
+          }
+        },
+        {
+          "name": "Create PayPal order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/payments/create-order",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"method\": \"PHONE\", \"recipientPhone\": \"9000000002\", \"amountInr\": 880, \"description\": \"Postman test\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json(); if (j.orderId) { pm.collectionVariables.set('orderId', j.orderId); }",
+                  "console.log('Open this URL, approve with a Sandbox buyer, then run Capture:', j.approvalUrl);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capture the approved order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/payments/capture/{{orderId}}"
+          }
+        },
+        {
+          "name": "My sent and received payments",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/payments"
+          }
+        },
+        {
+          "name": "Save my PayPal email (to receive payouts)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/paypal-email",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"your-sandbox-personal@example.com\" }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Home Expense Guardian",
+      "item": [
+        {
+          "name": "Overview (summary, to-do, expenses)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/home/overview"
+          }
+        },
+        {
+          "name": "Add a monthly expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/home/expenses",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"Money for home\", \"amount\": 3000, \"category\": \"Family\", \"frequency\": \"MONTHLY\", \"startDate\": \"2026-10-10\", \"remindDaysBefore\": 1 }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json(); if (j.id) { pm.collectionVariables.set('expenseId', j.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark a due date paid (recorded by you)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/home/expenses/{{expenseId}}/paid",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"dueDate\": \"2026-10-10\" }"
+            }
+          }
+        },
+        {
+          "name": "Monthly report",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/home/report?month=2026-10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Notifications, QR and webhooks",
+      "item": [
+        {
+          "name": "My notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/notifications"
+          }
+        },
+        {
+          "name": "Mark all read",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/notifications/read"
+          }
+        },
+        {
+          "name": "My QR code (SVG)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/qr/me"
+          }
+        },
+        {
+          "name": "PayPal webhook (PayPal calls this, signature is verified)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/paypal/webhook",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

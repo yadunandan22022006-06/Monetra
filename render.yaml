@@ -1,0 +1,20 @@
+# Render Blueprint: deploys Monetra as a Docker web service.
+# Secrets are NOT stored here. Set them in the Render dashboard (sync: false).
+services:
+  - type: web
+    name: monetra
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Creates the two demo accounts so judges can log in without email OTP.
+      - key: MONETRA_SEED_DEMO_USERS
+        value: "true"
