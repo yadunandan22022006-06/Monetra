@@ -96,4 +96,64 @@ class ContactsFlowTest {
 		assertFalse(carl.get("/api/contacts").body().contains("Milk shop"));
 		assertEquals(404, carl.delete("/api/contacts/9222222222").statusCode());
 	}
+
+	@Test
+	void phoneContactsCanBeAddedSearchedAndRemoved() throws Exception {
+		BCryptPasswordEncoder enc = new BCryptPasswordEncoder();
+
+		users.save(new UserAccount("omar@test.dev", enc.encode("password-o"), "9000000081", "Omar Owner"));
+		users.save(new UserAccount("lakshmi@test.dev", enc.encode("password-l"), "9000000082", "Lakshmi Devi"));
+		users.save(new UserAccount("hidden@test.dev", enc.encode("password-h"), "9000000083", "Hema Hidden"));
+
+		Http omar = Http.login(port, "omar@test.dev", "password-o");
+
+		assertEquals(401, new Http(port).post("/api/contacts/import", "{\"contacts\":[]}").statusCode());
+		assertEquals(400, omar.post("/api/contacts/import", "{}").statusCode());
+
+		assertEquals(200, omar.post("/api/contacts", "{\"phone\":\"9333333333\",\"name\":\"Milk shop\"}").statusCode());
+
+		/* Amma is on Monetra, the plumber is not. The rest is skipped: a landline, no name,
+		   the same number twice, your own number and a contact you already saved by hand. */
+		String phoneBook = "{\"contacts\":["
+				+ "{\"name\":\"Amma\",\"phone\":\"+91 90000 00082\"},"
+				+ "{\"name\":\"Ravi Plumber\",\"phone\":\"098765 43210\"},"
+				+ "{\"name\":\"Office\",\"phone\":\"080-2345678\"},"
+				+ "{\"name\":\"\",\"phone\":\"9111111111\"},"
+				+ "{\"name\":\"Ravi again\",\"phone\":\"9876543210\"},"
+				+ "{\"name\":\"Me\",\"phone\":\"9000000081\"},"
+				+ "{\"name\":\"Dairy\",\"phone\":\"9333333333\"}]}";
+
+		String first = omar.post("/api/contacts/import", phoneBook).body();
+		assertEquals("2", Http.number(first, "added"), first);
+		assertEquals("5", Http.number(first, "skipped"), first);
+
+		/* Like a phone book: search by your own name for someone, or by part of the number. */
+		String amma = omar.get("/api/contacts?q=amma").body();
+		assertTrue(amma.contains("\"name\":\"Amma\""), amma);
+		assertTrue(amma.contains("\"source\":\"PHONE\""), amma);
+		assertTrue(amma.contains("\"monetraName\":\"Lakshmi Devi\""), amma);
+		assertTrue(omar.get("/api/contacts?q=lakshmi").body().contains("\"name\":\"Amma\""));
+		assertTrue(omar.get("/api/contacts?q=98765").body().contains("Ravi Plumber"));
+
+		/* Adding your phone book does not let you find Monetra users who are not in it. */
+		assertEquals("[]", omar.get("/api/contacts?q=Hema").body());
+
+		/* Typing the number shows your own name for someone who is not on Monetra. */
+		String who = omar.get("/api/payments/recipient?phone=9876543210").body();
+		assertTrue(who.contains("\"name\":\"Ravi Plumber\""), who);
+
+		/* Adding the same phone book again changes nothing, except a name you changed on the phone. */
+		String again = omar.post("/api/contacts/import",
+				"{\"contacts\":[{\"name\":\"Amma\",\"phone\":\"9000000082\"},{\"name\":\"Ravi P\",\"phone\":\"9876543210\"}]}").body();
+		assertEquals("0", Http.number(again, "added"), again);
+		assertEquals("1", Http.number(again, "updated"), again);
+
+		/* Removing the phone contacts keeps the one saved by hand. */
+		String removed = omar.delete("/api/contacts/imported").body();
+		assertEquals("2", Http.number(removed, "removed"), removed);
+
+		String left = omar.get("/api/contacts").body();
+		assertTrue(left.contains("Milk shop"), left);
+		assertFalse(left.contains("Amma"), left);
+	}
 }

@@ -10,4 +10,6 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
     List<Contact> findByUserIdOrderByNameAsc(Long userId);
 
     Optional<Contact> findByUserIdAndPhoneKey(Long userId, String phoneKey);
+
+    List<Contact> findByUserIdAndSource(Long userId, String source);
 }

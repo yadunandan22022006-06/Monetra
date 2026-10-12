@@ -27,9 +27,18 @@ public class RecipientResolver {
     }
 
     private final UserAccountRepository users;
+    private final ContactRepository contacts;
 
-    public RecipientResolver(UserAccountRepository users) {
+    public RecipientResolver(UserAccountRepository users, ContactRepository contacts) {
         this.users = users;
+        this.contacts = contacts;
+    }
+
+    /** The sender's own name for a number that is not on Monetra: their contact, or a masked label. */
+    public String labelFor(Long senderId, String key) {
+        return contacts.findByUserIdAndPhoneKey(senderId, key)
+                .map(c -> c.name)
+                .orElse("Contact " + Phones.mask(key));
     }
 
     /** Throws IllegalArgumentException with a friendly message if the details are not valid. */
@@ -70,12 +79,14 @@ public class RecipientResolver {
             throw new IllegalArgumentException("You cannot pay yourself.");
         }
 
-        /* A name read from a scanned QR code is only a label for someone not on Monetra. */
+        /* Someone not on Monetra is labelled by the sender's own contact, or by the name on a scanned QR code. */
         String scanned = text(body.get("scannedName"), 60);
 
         String label = found != null
                 ? found.displayName()
-                : (scanned.isEmpty() ? "Contact " + Phones.mask(key) : scanned);
+                : contacts.findByUserIdAndPhoneKey(senderId, key)
+                        .map(c -> c.name)
+                        .orElse(scanned.isEmpty() ? "Contact " + Phones.mask(key) : scanned);
 
         return new Recipient(
                 label,

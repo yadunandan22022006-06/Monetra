@@ -118,7 +118,7 @@ public class PaymentController {
 
         if (found == null) {
             out.put("onMonetra", false);
-            out.put("name", "Contact " + Phones.mask(key));
+            out.put("name", recipients.labelFor(userId, key));
         } else if (found.getId().equals(userId)) {
             out.put("onMonetra", true);
             out.put("self", true);

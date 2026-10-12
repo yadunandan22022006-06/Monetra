@@ -11,8 +11,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.http.HttpResponse;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The same AI Financial Guardian, but through a free OpenAI-compatible provider (Gemini, Groq, Ollama...). */
@@ -105,13 +107,50 @@ class FreeAiFlowTest {
 	}
 
 	@Test
-	void explainEndpointsUseTheFreeProviderToo() throws Exception {
+	void theAiNoticeWhilePayingSeesLimitsLoansAndGoals() throws Exception {
+		/* A payment that nearly uses up the daily limit, with an EMI due in two days and a savings goal. */
+		assertEquals(200, zoe.put("/api/data", "{\"limits\":{\"daily\":500},"
+				+ "\"loans\":[{\"name\":\"Bike EMI\",\"amount\":2000,\"due\":\"" + LocalDate.now().plusDays(2) + "\"}],"
+				+ "\"goals\":[{\"name\":\"Laptop fund\",\"target\":50000,\"saved\":12000}]}").statusCode());
+
 		AI.reply(FakeOpenAi.text("You are inside your limit."));
 
+		/* Figures sent by the browser are ignored: the server uses the saved records. */
 		HttpResponse<String> r = zoe.post("/api/guardian/explain",
-				"{\"amountInr\":100,\"dailyLimit\":500,\"spentToday\":0,\"remainingAfter\":400,\"level\":\"ok\"}");
+				"{\"amountInr\":450,\"dailyLimit\":999999,\"recipientName\":\"Ravi Free\"}");
 
 		assertEquals(200, r.statusCode(), r.body());
 		assertTrue(r.body().contains("You are inside your limit."), r.body());
+
+		String sent = AI.requests.get(0);
+		assertTrue(sent.contains("leaves only ₹50"), sent);
+		assertTrue(sent.contains("Bike EMI"), sent);
+		assertTrue(sent.contains("Laptop fund"), sent);
+		assertTrue(sent.contains("Ravi Free"), sent);
+		assertFalse(sent.contains("999999"), sent);
+	}
+
+	@Test
+	void anAiReplyWithAnInventedNumberIsNeverShown() throws Exception {
+		assertEquals(200, zoe.put("/api/data", "{\"limits\":{\"daily\":500}}").statusCode());
+
+		/* The first reply invents a limit of 5,000. It is thrown away and the AI is asked once more. */
+		AI.reply(FakeOpenAi.text("This is over your daily limit of ₹5,000."));
+		AI.reply(FakeOpenAi.text("This fits your daily limit of ₹500 and leaves ₹400."));
+
+		HttpResponse<String> ok = zoe.post("/api/guardian/explain", "{\"amountInr\":100}");
+
+		assertEquals(200, ok.statusCode(), ok.body());
+		assertTrue(ok.body().contains("leaves ₹400"), ok.body());
+		assertEquals(2, AI.requests.size());
+
+		/* Two wrong replies in a row: nothing from the AI is shown. The page keeps its rule-based advice. */
+		AI.reply(FakeOpenAi.text("You have ₹9,999 left."));
+		AI.reply(FakeOpenAi.text("You have ₹8,888 left."));
+
+		HttpResponse<String> bad = zoe.post("/api/guardian/explain", "{\"amountInr\":100}");
+
+		assertEquals(502, bad.statusCode(), bad.body());
+		assertFalse(bad.body().contains("8,888"), bad.body());
 	}
 }

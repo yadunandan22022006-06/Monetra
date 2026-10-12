@@ -988,9 +988,48 @@ $('payPhone').addEventListener('input', function() {
 });
 
 /* ==============================
-   PAY: CONTACTS (search and save)
-   Only people you saved and people you paid or were paid by.
+   PAY: CONTACTS (search, save, phone contacts)
+   Only people you saved, people you paid or were paid by,
+   and your own phone's contact list if you add it.
 ================================ */
+
+const CONTACT_TAGS = { SAVED: 'Saved', RECENT: 'Recent', PHONE: 'Phone' };
+
+/* Android Chrome can open the phone's own contact list. Other browsers read a contacts file instead. */
+const canPickContacts = !!(navigator.contacts && navigator.contacts.select);
+
+function contactTools() {
+    const row = makeElement('div', 'contact-tools');
+
+    const add = makeElement('button', 'contact-item');
+
+    add.type = 'button';
+
+    add.appendChild(makeElement('span', 'icon-chip', '＋'));
+
+    const text = makeElement('span');
+
+    text.appendChild(document.createTextNode('Add contacts from your phone'));
+    text.appendChild(makeElement('small', '', canPickContacts
+        ? 'Pick them from your phone\'s contact list'
+        : 'Choose the contacts file (.vcf) from your phone or Google Contacts'));
+
+    add.appendChild(text);
+
+    add.addEventListener('click', addPhoneContacts);
+
+    const clear = makeElement('button', 'contact-clear', 'Remove');
+
+    clear.type = 'button';
+    clear.title = 'Remove the contacts that were added from your phone';
+
+    clear.addEventListener('click', removePhoneContacts);
+
+    row.appendChild(add);
+    row.appendChild(clear);
+
+    return row;
+}
 
 async function loadContacts(query) {
     const box = $('contactList');
@@ -998,12 +1037,12 @@ async function loadContacts(query) {
     try {
         const list = safeArray(await apiJson('/api/contacts?q=' + encodeURIComponent(query || ''), {}, 8000));
 
-        box.replaceChildren();
+        box.replaceChildren(contactTools());
 
         if (!list.length) {
             box.appendChild(makeElement('div', 'empty-state', query
                 ? 'No contact matches. Type the mobile number below.'
-                : 'No contacts yet. People you pay or save appear here.'));
+                : 'No contacts yet. Add your phone contacts above, or pay someone and they appear here.'));
         }
 
         list.forEach(c => {
@@ -1015,11 +1054,16 @@ async function loadContacts(query) {
 
             const text = makeElement('span');
 
+            /* Your own contacts show the full number. People you only paid stay masked. */
+
+            const number = c.saved ? c.phone.slice(0, 5) + ' ' + c.phone.slice(5) : c.maskedPhone;
+            const monetra = c.onMonetra ? ' • On Monetra' + (c.monetraName ? ' as ' + c.monetraName : '') : '';
+
             text.appendChild(document.createTextNode(c.name));
-            text.appendChild(makeElement('small', '', c.maskedPhone + (c.onMonetra ? ' • On Monetra' : '')));
+            text.appendChild(makeElement('small', '', number + monetra));
 
             item.appendChild(text);
-            item.appendChild(makeElement('span', 'tag', c.source === 'SAVED' ? 'Saved' : 'Recent'));
+            item.appendChild(makeElement('span', 'tag', CONTACT_TAGS[c.source] || 'Recent'));
 
             item.addEventListener('click', () => pickContact(c));
 
@@ -1030,6 +1074,208 @@ async function loadContacts(query) {
 
     } catch (error) {
         box.classList.add('hidden');
+    }
+}
+
+/* Reads names and numbers from a contacts file (.vcf), the format phones and Google Contacts export. */
+
+function decodeQuotedPrintable(text) {
+    const bytes = [];
+
+    for (let i = 0; i < text.length; i++) {
+        const hex = text.substr(i + 1, 2);
+
+        if (text[i] === '=' && /^[0-9A-F]{2}$/i.test(hex)) {
+            bytes.push(parseInt(hex, 16));
+            i += 2;
+        } else {
+            bytes.push(text.charCodeAt(i) & 0xFF);
+        }
+    }
+
+    try {
+        return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    } catch (error) {
+        return text;
+    }
+}
+
+function parseVcard(fileText) {
+    const lines = [];
+
+    /* A long line may be continued on the next one: join them first. */
+
+    String(fileText).replace(/\r\n?/g, '\n').split('\n').forEach(line => {
+        const last = lines.length - 1;
+
+        if (last >= 0 && /^[ \t]/.test(line)) {
+            lines[last] += line.slice(1);
+
+        } else if (last >= 0 && /QUOTED-PRINTABLE/i.test(lines[last]) && lines[last].endsWith('=')) {
+            lines[last] = lines[last].slice(0, -1) + line;
+
+        } else {
+            lines.push(line);
+        }
+    });
+
+    const found = [];
+
+    let name = '';
+    let phones = [];
+
+    lines.forEach(line => {
+        const colon = line.indexOf(':');
+
+        if (colon < 0) {
+            return;
+        }
+
+        const head = line.slice(0, colon).replace(/^item\d+\./i, '').toUpperCase();
+        const field = head.split(';')[0];
+
+        let value = line.slice(colon + 1);
+
+        if (head.includes('QUOTED-PRINTABLE')) {
+            value = decodeQuotedPrintable(value);
+        }
+
+        value = value.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+
+        if (field === 'BEGIN') {
+            name = '';
+            phones = [];
+
+        } else if (field === 'FN' && value) {
+            name = value;
+
+        } else if (field === 'N' && !name) {
+            /* N is "Family;Given;...": show it as "Given Family". */
+            name = value.split(';').slice(0, 2).reverse().join(' ').trim();
+
+        } else if (field === 'TEL') {
+            phones.push(value);
+
+        } else if (field === 'END') {
+            phones.forEach(phone => found.push({ name, phone }));
+        }
+    });
+
+    return found;
+}
+
+/* Keeps contacts that have a name and a mobile number (not a landline), one per number, and saves them on the server. */
+
+async function sendPhoneContacts(found) {
+    const seen = new Set();
+
+    const list = found.filter(c => {
+        const key = phoneKeyFrom(c.phone);
+
+        if (!/^[6-9]/.test(key) || !String(c.name || '').trim() || seen.has(key)) {
+            return false;
+        }
+
+        seen.add(key);
+
+        return true;
+    });
+
+    if (!list.length) {
+        showToast('No contacts with a name and a 10-digit mobile number were found.');
+        return;
+    }
+
+    let added = 0;
+    let updated = 0;
+
+    try {
+        for (let i = 0; i < list.length; i += 1000) {
+            const result = await postJson('/api/contacts/import', { contacts: list.slice(i, i + 1000) }, 30000);
+
+            added += Number(result.added) || 0;
+            updated += Number(result.updated) || 0;
+        }
+
+    } catch (error) {
+        showToast(error.message);
+        return;
+    }
+
+    showToast(added || updated
+        ? 'Added ' + added + ' contact' + (added === 1 ? '' : 's') + ' from your phone' +
+            (updated ? ' and updated ' + updated : '') + '. Search by name or number.'
+        : 'Those contacts are already in Monetra.');
+
+    loadContacts($('contactSearch').value);
+}
+
+async function addPhoneContacts() {
+    if (!canPickContacts) {
+        $('contactsFile').click();
+        return;
+    }
+
+    try {
+        const picked = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+
+        const found = [];
+
+        safeArray(picked).forEach(person => {
+            const name = safeArray(person.name)[0] || '';
+
+            safeArray(person.tel).forEach(phone => found.push({ name, phone }));
+        });
+
+        if (found.length) {
+            await sendPhoneContacts(found);
+        }
+
+    } catch (error) {
+        showToast('Your phone contacts could not be opened. Choose a contacts file (.vcf) instead.');
+
+        $('contactsFile').click();
+    }
+}
+
+$('contactsFile').addEventListener('change', async function() {
+    const file = this.files && this.files[0];
+
+    this.value = '';
+
+    if (!file) {
+        return;
+    }
+
+    if (file.size > 30 * 1024 * 1024) {
+        showToast('That file is too large. Export your contacts as a .vcf file without photos.');
+        return;
+    }
+
+    try {
+        await sendPhoneContacts(parseVcard(await file.text()));
+
+    } catch (error) {
+        showToast('That file could not be read. Choose a contacts file that ends in .vcf.');
+    }
+});
+
+async function removePhoneContacts() {
+    if (!window.confirm('Remove all contacts that were added from your phone? Contacts you saved yourself stay.')) {
+        return;
+    }
+
+    try {
+        const result = await apiJson('/api/contacts/imported', { method: 'DELETE' }, 15000);
+
+        showToast(result.removed
+            ? 'Removed ' + result.removed + ' phone contact' + (result.removed === 1 ? '' : 's') + '.'
+            : 'There were no phone contacts to remove.');
+
+        loadContacts($('contactSearch').value);
+
+    } catch (error) {
+        showToast(error.message);
     }
 }
 
@@ -1050,7 +1296,7 @@ async function refreshSaveContact(key) {
     try {
         const list = safeArray(await apiJson('/api/contacts?q=' + key, {}, 8000));
 
-        const saved = list.some(c => c.phone === key && c.source === 'SAVED');
+        const saved = list.some(c => c.phone === key && c.saved);
 
         $('saveContact').classList.toggle('hidden', saved);
 
@@ -1465,6 +1711,51 @@ function budgetLines(check) {
     return lines;
 }
 
+const PERIOD_RESET = { daily: 'tomorrow', monthly: 'next month', yearly: 'next year' };
+
+/* Plain advice worked out from the budget figures. Shown when the AI explanation is not available. */
+function guardianAdvice(check) {
+    const tips = [];
+    const periods = safeArray(check.periods);
+
+    if (!periods.length) {
+        return tips;
+    }
+
+    const over = periods.find(p => p.level === 'over');
+
+    if (over) {
+        const name = PERIOD_NAMES[over.period] || over.period;
+        const limit = Number(over.limit);
+        const room = limit - Number(over.spent);
+        const times = Math.round(Number(check.amountInr) / limit);
+        const reset = PERIOD_RESET[over.period];
+
+        if (times >= 2) {
+            tips.push('This one payment is about ' + times + ' times your ' + name + ' limit.');
+        }
+
+        tips.push(room > 0
+            ? 'You had ' + money(room) + ' left before this payment. Paying ' + money(room) +
+                ' or less keeps you inside the limit.'
+            : 'You had already used all of your ' + name + ' limit before this payment.');
+
+        tips.push('If this payment is planned, raise the limit in Spending first.' +
+            (reset ? ' If it can wait, your ' + over.period + ' limit starts again ' + reset + '.' : ''));
+    }
+
+    const set = periods.map(p => p.period);
+    const missing = ['weekly', 'monthly'].filter(p => !set.includes(p));
+
+    if (missing.length) {
+        tips.push('No ' + missing.join(' or ') + ' limit is set, so this was checked only against your ' +
+            set.join(' and ') + (set.length > 1 ? ' limits' : ' limit') +
+            '. Add more limits in Spending for a fuller check.');
+    }
+
+    return tips;
+}
+
 async function startReview() {
     const message = $('paymentMessage');
 
@@ -1614,33 +1905,43 @@ async function requestAiAdvice(check, run) {
 
     box.replaceChildren();
 
-    box.appendChild(makeElement('div', 'empty-state', '🛡️ The Guardian is reviewing this payment...'));
+    /* Monetra's own rules advise at once. The AI notice replaces them when it arrives. */
 
-    const emi = check.nextEmiName
-        ? { name: check.nextEmiName, amount: check.nextEmiAmount, due: check.nextEmiDue }
-        : null;
+    const tips = guardianAdvice(check);
+
+    if (tips.length) {
+        const advice = makeElement('div', 'alert-box' + (check.level === 'over' ? ' warn-box' : ''));
+
+        advice.appendChild(makeElement('strong', '', '🛡️ Guardian advice'));
+
+        const list = makeElement('ul');
+
+        tips.forEach(text => list.appendChild(makeElement('li', '', text)));
+
+        advice.appendChild(list);
+
+        box.appendChild(advice);
+    }
+
+    const waiting = makeElement('div', 'footer-note',
+        '🛡️ The Guardian AI is checking your limits, loans, EMIs and goals...');
+
+    box.appendChild(waiting);
 
     try {
+        /* The server works out the figures from the saved records. A model on this computer can be slow to start. */
+
         const result = await postJson('/api/guardian/explain', {
             amountInr: draft.amountInr,
-            dailyLimit: check.dailyLimit,
-            spentToday: check.spentToday,
-            remainingAfter: check.remainingAfter,
-            level: check.level,
             recipientName: draft.resolvedName,
-            description: draft.description,
-            nextEmiName: emi ? emi.name : '',
-            nextEmiAmount: emi ? emi.amount : 0,
-            nextEmiDue: emi ? emi.due : ''
-        }, 15000);
+            description: draft.description
+        }, 45000);
 
         if (run !== reviewRun) {
             return;
         }
 
-        box.replaceChildren();
-
-        box.appendChild(makeElement('div', 'alert-box',
+        box.replaceChildren(makeElement('div', 'alert-box' + (check.level === 'over' ? ' warn-box' : ''),
             '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 700)));
 
     } catch (error) {
@@ -1648,11 +1949,13 @@ async function requestAiAdvice(check, run) {
             return;
         }
 
-        box.replaceChildren();
+        /* No AI: the rule-based advice stays. */
 
-        box.appendChild(makeElement('div', 'footer-note',
-            'The AI explanation is not available right now. ' +
-            'The budget check above is calculated by Monetra and is still valid.'));
+        if (tips.length) {
+            waiting.textContent = 'This advice comes from Monetra\'s budget rules.';
+        } else {
+            waiting.remove();
+        }
     }
 }
 
@@ -2442,8 +2745,60 @@ $('loanForm').addEventListener('submit', function(event) {
     renderAll();
 });
 
+/* An EMI is paid every month, so this is what it costs per day, per month and per year. */
+function emiPlan(amount) {
+    const perYear = (Number(amount) || 0) * 12;
+
+    return { daily: perYear / 365, monthly: perYear / 12, yearly: perYear };
+}
+
+/* How much to save for all EMIs together, compared with the spending limit the user has set. */
+function renderLoanPlan() {
+    const box = $('loanPlan');
+
+    box.replaceChildren();
+
+    if (!records.loans.length) {
+        return;
+    }
+
+    const plan = emiPlan(records.loans.reduce((sum, loan) => sum + Number(loan.amount || 0), 0));
+    const next = nextEmi();
+
+    box.appendChild(makeElement('div', 'hint', 'To cover your EMIs, you must save:'));
+
+    const grid = makeElement('div', 'stat-grid');
+
+    grid.append(
+        statBox('Every day', money(plan.daily)),
+        statBox('Every month', money(plan.monthly)),
+        statBox('Every year', money(plan.yearly)),
+        statBox('Next EMI due', next ? displayDate(next.due) : 'Overdue', next ? '' : 'var(--red)')
+    );
+
+    box.appendChild(grid);
+
+    const period = ['monthly', 'daily', 'yearly'].find(p => Number(records.limits[p]) > 0);
+
+    if (!period) {
+        return;
+    }
+
+    const limit = Number(records.limits[period]);
+    const need = plan[period];
+
+    box.appendChild(need > limit
+        ? makeElement('div', 'alert-box warn-box', '⚠️ Your EMIs need ' + money(need) +
+            ' every ' + period.replace('ly', '').replace('dai', 'day') + ', which is more than your ' +
+            period + ' spending limit of ' + money(limit) + '.')
+        : makeElement('div', 'alert-box', 'Your EMIs take ' + money(need) + ' of your ' + money(limit) +
+            ' ' + period + ' spending limit (' + Math.round(need / limit * 100) + '%).'));
+}
+
 function updateLoans() {
     $('loanCount').textContent = records.loans.length + ' ACTIVE';
+
+    renderLoanPlan();
 
     renderRecords('loansList', records.loans, 'No loans or EMI reminders added yet.', loan => {
         const overdue = loan.due < today();
@@ -2451,10 +2806,13 @@ function updateLoans() {
 
         const label = overdue ? 'OVERDUE' : (dueToday ? 'DUE TODAY' : 'Due ' + displayDate(loan.due));
 
+        const plan = emiPlan(loan.amount);
+
         const card = recordCard(
             loan.name,
             label + ' • EMI: ' + money(loan.amount) + (loan.notes ? ' • ' + loan.notes : ''),
-            '',
+            'Save ' + money(plan.daily) + ' a day • ' + money(plan.monthly) + ' a month • ' +
+                money(plan.yearly) + ' a year',
             'Delete',
             () => deleteRecord('loans', loan.id),
             '🏦'

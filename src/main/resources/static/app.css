@@ -1096,6 +1096,22 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
 .contact-item .tag { margin-left: auto; font-size: 11px; color: var(--gold); border: 1px solid var(--gold-line); border-radius: 99px; padding: 2px 8px; }
 
+/* first row of the list: add or remove the phone's own contacts */
+
+.contact-tools { display: flex; align-items: center; border-bottom: 1px solid rgba(242, 196, 92, 0.28); }
+
+.contact-tools .contact-item { flex: 1; min-width: 0; color: var(--gold); }
+
+.contact-clear {
+    flex: 0 0 auto;
+    margin-right: 10px;
+    padding: 5px 10px;
+    border: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+
 .approval-box { margin-top: 12px; }
 
 @media (max-width: 640px) {
@@ -1115,6 +1131,20 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 }
 
 /* ==========================================================
+   LOANS: how much to save for the EMIs
+   ========================================================== */
+
+.loan-plan:not(:empty) { margin-bottom: 12px; }
+
+.loan-plan .hint { margin: 0 2px; }
+
+.loan-plan .stat-grid { margin-top: 8px; }
+
+.loan-plan .stat .v { font-size: 16px; }
+
+.loan-plan .alert-box { margin-top: 8px; padding: 8px 12px; font-size: 13px; }
+
+/* ==========================================================
    REVIEW SCREEN: compact, buttons always in reach
    ========================================================== */
 
@@ -1131,6 +1161,10 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
     line-height: 1.45;
     border-radius: 14px;
 }
+
+.review-notes .alert-box ul { margin: 6px 0 0; padding-left: 18px; }
+
+.review-notes .alert-box li + li { margin-top: 3px; }
 
 .review-notes .empty-state { margin-top: 8px; padding: 8px 12px; font-size: 13px; }
 

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,6 +102,97 @@ class BudgetRulesTest {
 	void forecastWithoutALimitIsUnknown() throws Exception {
 		Map<String, Object> out = BudgetRules.forecast(data("{}"), TODAY);
 		assertEquals("unknown", out.get("status"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void paymentFactsShowTheAiEveryLimitLoanAndGoal() throws Exception {
+		JsonNode d = data("{\"limits\":{\"daily\":100},"
+				+ "\"expenses\":[{\"amount\":50,\"date\":\"2026-10-11\"}],"
+				+ "\"loans\":[{\"name\":\"Bike EMI\",\"amount\":2000,\"due\":\"2026-10-14\"},"
+				+ "{\"name\":\"Old Loan\",\"amount\":1000,\"due\":\"2026-10-01\"}],"
+				+ "\"goals\":[{\"name\":\"Laptop\",\"target\":50000,\"saved\":12000}]}");
+
+		Map<String, Object> out = BudgetRules.paymentFacts(d, new BigDecimal("10000"), TODAY);
+
+		assertEquals("over", out.get("budgetStatus"));
+
+		Map<String, Object> daily = ((List<Map<String, Object>>) out.get("limits")).get(0);
+		assertEquals("daily", daily.get("period"));
+		assertEquals(new BigDecimal("9950.00"), daily.get("overLimitByInr"));
+		assertEquals(new BigDecimal("100.0"), daily.get("paymentIsTimesTheLimit"));
+		assertEquals(List.of("weekly", "monthly", "yearly"), out.get("limitsNotSet"));
+
+		List<Map<String, Object>> loans = (List<Map<String, Object>>) out.get("loans");
+		assertEquals(3L, loans.get(0).get("dueInDays"));
+		assertEquals(10L, loans.get(1).get("overdueByDays"));
+		assertEquals(new BigDecimal("3000.00"), out.get("emiTotalPerMonthInr"));
+		assertEquals(new BigDecimal("36000.00"), out.get("emiTotalPerYearInr"));
+		assertEquals(new BigDecimal("98.63"), out.get("emiNeedsSavingPerDayInr"));
+
+		assertEquals(new BigDecimal("38000.00"), out.get("goalsStillNeededInr"));
+
+		/* No monthly limit and no income recorded, so there is no month budget to report. */
+		assertFalse(out.containsKey("monthBudgetLeftAfterThisPaymentInr"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void paymentFactsInsideTheLimitSayWhatIsLeft() throws Exception {
+		JsonNode d = data("{\"limits\":{\"daily\":500,\"monthly\":4000}}");
+
+		Map<String, Object> out = BudgetRules.paymentFacts(d, new BigDecimal("100"), TODAY);
+
+		Map<String, Object> daily = ((List<Map<String, Object>>) out.get("limits")).get(0);
+		assertEquals(new BigDecimal("400.00"), daily.get("leftAfterThisPaymentInr"));
+		assertFalse(daily.containsKey("overLimitByInr"));
+		assertEquals(new BigDecimal("3900.00"), out.get("monthBudgetLeftAfterThisPaymentInr"));
+		assertEquals(List.of(), out.get("loans"));
+	}
+
+	@Test
+	void paymentBriefTurnsTheFactsIntoPlainSentences() throws Exception {
+		JsonNode d = data("{\"limits\":{\"daily\":100,\"monthly\":20000},"
+				+ "\"expenses\":[{\"amount\":50,\"date\":\"2026-10-11\"}],"
+				+ "\"loans\":[{\"name\":\"Bike EMI\",\"amount\":2000,\"due\":\"2026-10-14\"}],"
+				+ "\"goals\":[{\"name\":\"Laptop\",\"target\":50000,\"saved\":12000}]}");
+
+		Map<String, Object> facts = BudgetRules.paymentFacts(d, new BigDecimal("10000"), TODAY);
+		facts.put("recipientName", "Ravi");
+
+		String brief = String.join("\n", BudgetRules.paymentBrief(facts));
+
+		/* Only what matters most: the broken limit, the EMI due soon and the goal it strains. */
+		assertTrue(brief.contains("You are about to pay ₹10,000 to Ravi. The payment has not been made yet."), brief);
+		assertTrue(brief.contains("goes OVER your daily limit of ₹100 by ₹9,950. The payment alone is about 100 times that limit."), brief);
+		assertTrue(brief.contains("Your EMI \"Bike EMI\" of ₹2,000 is due in 3 days, and this payment still leaves room for it this month."), brief);
+		assertTrue(brief.contains("Your savings goal \"Laptop\" still needs ₹38,000."), brief);
+
+		/* The monthly limit is fine, so it is left out. */
+		assertFalse(brief.contains("monthly"), brief);
+	}
+
+	@Test
+	void paymentBriefForAPaymentThatFitsIsShort() throws Exception {
+		JsonNode d = data("{\"limits\":{\"daily\":500},"
+				+ "\"loans\":[{\"name\":\"Bike EMI\",\"amount\":2000,\"due\":\"2026-12-14\"}],"
+				+ "\"goals\":[{\"name\":\"Laptop\",\"target\":50000,\"saved\":12000}]}");
+
+		List<String> brief = BudgetRules.paymentBrief(BudgetRules.paymentFacts(d, new BigDecimal("100"), TODAY));
+
+		/* Nothing is strained and the EMI is far away: the payment and the limit are all there is to say. */
+		assertEquals(2, brief.size(), brief.toString());
+		assertTrue(brief.get(1).contains("fits every spending limit you set. After it, ₹400 is left of your daily limit of ₹500."), brief.toString());
+	}
+
+	@Test
+	void paymentBriefSaysWhenNoLimitIsSet() throws Exception {
+		Map<String, Object> facts = BudgetRules.paymentFacts(data("{}"), new BigDecimal("250.50"), TODAY);
+
+		String brief = String.join("\n", BudgetRules.paymentBrief(facts));
+
+		assertTrue(brief.contains("You are about to pay ₹250.50."), brief);
+		assertTrue(brief.contains("No spending limit is set"), brief);
 	}
 
 	@Test

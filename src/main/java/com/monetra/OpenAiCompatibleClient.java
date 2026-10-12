@@ -88,6 +88,7 @@ public class OpenAiCompatibleClient implements AiProvider {
         Map<String, Object> request = new HashMap<>();
         request.put("model", model);
         request.put("max_tokens", maxTokens);
+        request.put("temperature", 0.2);   /* stay close to the facts */
         request.put("messages", messages);
 
         if (tools != null && !tools.isEmpty()) {

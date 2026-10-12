@@ -16,7 +16,7 @@ The **Monetra Guardian** button (top left) opens one place with two sections tha
 | **AI & Payments** | **PayPal Payment System** | PayPal Orders (send), **PayPal Payouts** (the receiver gets the money in their PayPal account), **verified webhooks**, a payments table with status and payout status, and a "Check with PayPal" recovery button. |
 | **Family & Home** | **Home Expense Guardian** | Recurring household expenses (rent, bills, money for home) that are daily, weekly, monthly, yearly or one time. Upcoming, due today, overdue and paid tracking, reminders, a daily summary and a monthly report. Payments you mark yourself are labelled "not verified"; payments made through Monetra are marked paid when PayPal confirms them. |
 
-**Send Money** also has **contacts search**: people you saved and people you paid or were paid by. (You cannot search all Monetra users, by design.)
+**Send Money** also has **contacts search**: people you saved, people you paid or were paid by, and **your own phone contacts**. Tap *Add contacts from your phone* in the search list: on Android Chrome it opens the phone's contact list, on other browsers you choose the contacts file (`.vcf`) exported from your phone or Google Contacts. After that you search by name or number and never type a name. (You cannot search all Monetra users, by design. Phone contacts are stored only for you and *Remove* deletes them.)
 
 Other features: pay by **mobile number, QR code scan or bank account** (the name and the bank are detected for you), **My QR** to get paid, **Fraud Guard**, **Spending Forecast** with AI explanation, loans and EMIs, savings goals, notifications and a transaction history of sent **and received** payments.
 
@@ -88,7 +88,8 @@ Without PayPal credentials everything except the final PayPal step still works. 
 
 - **AI Financial Guardian agent** with tool calling. Every number comes from a tool that does the arithmetic in Java on the user's own saved data.
 - The agent can only **prepare** a payment or a reminder. It cannot send money or save anything. The app shows what was prepared and the user confirms. Tool outputs and user text are treated as data, not instructions.
-- It also explains a payment's budget impact, parses "Pay 9876543210 500 for lunch", and explains the month-end forecast.
+- **AI notice while paying**: before every payment the AI sees the user's spending limits, every loan and EMI, the savings goals and the household bills due soon (all worked out in Java from the saved records, not sent by the browser) and writes a short notice. It only advises; the user decides.
+- It also parses "Pay 9876543210 500 for lunch" and explains the month-end forecast.
 - Works with **free AI providers** (Google Gemini free tier, Groq free tier, Ollama on your own computer) or Claude. Without any AI key the app falls back to rule-based text and still works.
 
 ## Free AI (no payment needed)
@@ -99,7 +100,7 @@ Monetra's AI works with any provider that speaks the common "OpenAI chat" format
 |---|---|---|
 | **Google Gemini** (free tier, key from [Google AI Studio](https://aistudio.google.com/apikey)) | Free tier with rate limits | `AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `AI_MODEL=<a current Gemini flash model id>`, `AI_API_KEY=<your key>` |
 | **Groq** (free tier, key from [console.groq.com](https://console.groq.com)) | Free tier with rate limits | `AI_BASE_URL=https://api.groq.com/openai/v1`, `AI_MODEL=llama-3.3-70b-versatile` (or another model that supports tools), `AI_API_KEY=<your key>` |
-| **Ollama** (runs on your own computer, [ollama.com](https://ollama.com)) | Free, no key, no internet | install Ollama, run `ollama pull llama3.1`, then `AI_BASE_URL=http://localhost:11434/v1`, `AI_MODEL=llama3.1` |
+| **Ollama** (runs on your own computer, [ollama.com](https://ollama.com)) | Free and unlimited, no key, works offline | install Ollama, run `ollama pull llama3.2`, then `AI_BASE_URL=http://localhost:11434/v1`, `AI_MODEL=llama3.2` |
 
 Windows PowerShell example:
 
@@ -134,7 +135,7 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 | `BudgetRules`, `FraudRules`, `HomeExpenseRules` | Deterministic, unit-tested rules |
 | `AgentController`, `AgentTools`, `AiService`, `OpenAiCompatibleClient`, `AnthropicClient` | The AI agent and its tools |
 | `HomeController`, `HomeExpenseService` | Home Expense Guardian |
-| `ContactController`, `ContactService` | Contacts search |
+| `ContactController`, `ContactService` | Contacts search and phone contacts |
 | `QrController`, `NotificationController`, `ProfileController`, `DataController`, `DemoData` | QR, notifications, PayPal email, per-user records, demo accounts |
 
 ## Run the tests
