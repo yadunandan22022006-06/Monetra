@@ -36,6 +36,7 @@ const NOTIFICATION_ICONS = {
     PAYMENT_FAILED: '!',
     PAYOUT: '₹',
     REMINDER: '⏰',
+    ALERT: '🛡️'
 };
 
 const PARENT_VIEW = {
@@ -43,7 +44,8 @@ const PARENT_VIEW = {
     fraudView: 'homeView',
     notifView: 'homeView',
     transactionView: 'homeView',
-    guardianView: 'none'
+    guardianView: 'none',
+    heView: 'none'
 };
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
@@ -73,6 +75,12 @@ let period = 'daily';
 let historyFilter = 'all';
 let forecast = null;
 
+let overview = null;            /* the Guardian's figures for the dashboard, loans and goals, from the server */
+let editingLoan = null;         /* id of the loan being edited, if any */
+let editingGoal = null;
+let heType = 'DAILY';           /* the home expense (HE) payment option that is open */
+let heHistory = [];
+
 let pollTimer = null;
 let maxSeenNotification = -1;
 let scanStream = null;
@@ -87,7 +95,9 @@ function freshRecords() {
         savings: [],
         goals: [],
         limits: { daily: 0, weekly: 0, monthly: 0, yearly: 0 },
-        dailyLimit: 0
+        dailyLimit: 0,
+        profile: {},                /* balance, monthly income, income day, essentials, buffer, notify */
+        he: { reminders: {} }       /* home expense reminders */
     };
 }
 
@@ -200,6 +210,69 @@ function showToast(text, ms) {
 
     toastTimer = setTimeout(() => box.classList.add('hidden'), ms || 4500);
 }
+
+/*
+ * Questions are asked in a box drawn by the app itself. The browser's own confirm() and prompt()
+ * are never shown inside some app windows: they answer "Cancel" by themselves.
+ */
+
+let askDone = null;
+
+function askBox(message, yesText, noText, startValue) {
+    const input = $('askInput');
+    const wantsText = startValue !== undefined;
+
+    if (askDone) {
+        askDone(false);
+    }
+
+    $('askText').textContent = message;
+    $('askYes').textContent = yesText || 'OK';
+    $('askNo').textContent = noText || 'Cancel';
+
+    input.classList.toggle('hidden', !wantsText);
+    input.value = wantsText ? String(startValue) : '';
+
+    $('askBox').classList.remove('hidden');
+
+    (wantsText ? input : $('askYes')).focus();
+
+    return new Promise(resolve => {
+        askDone = yes => {
+            askDone = null;
+
+            $('askBox').classList.add('hidden');
+
+            resolve(wantsText ? (yes ? input.value : null) : yes);
+        };
+    });
+}
+
+/* true when the user agrees, false when they do not. */
+
+function askConfirm(message, yesText, noText) {
+    return askBox(message, yesText, noText);
+}
+
+/* What the user typed, or null when they cancelled. */
+
+function askText(message, startValue) {
+    return askBox(message, 'OK', 'Cancel', startValue === undefined || startValue === null ? '' : startValue);
+}
+
+$('askYes').addEventListener('click', () => askDone && askDone(true));
+$('askNo').addEventListener('click', () => askDone && askDone(false));
+
+$('askBox').addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        $('askNo').click();
+
+    } else if (event.key === 'Enter' && event.target === $('askInput')) {
+        event.preventDefault();
+
+        $('askYes').click();
+    }
+});
 
 function validAmount(amount) {
     if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) {
@@ -315,6 +388,14 @@ function applyRecords(source) {
     };
 
     records.dailyLimit = records.limits.daily;
+
+    const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
+
+    records.profile = isObject(records.profile) ? records.profile : {};
+    records.profile.notify = isObject(records.profile.notify) ? records.profile.notify : {};
+
+    records.he = isObject(records.he) ? records.he : {};
+    records.he.reminders = isObject(records.he.reminders) ? records.he.reminders : {};
 }
 
 async function loadRecords() {
@@ -368,12 +449,35 @@ function saveRecords() {
                 body: JSON.stringify(records)
             }, 15000);
 
+            /* The Guardian's figures are worked out on the server from what was just saved. */
+
+            if (run === saveRun) {
+                loadOverview();
+            }
+
         } catch (error) {
             if (run === saveRun) {
                 showToast('Could not save your data: ' + error.message);
             }
         }
     }, 250);
+}
+
+/* Daily budget, loans, next month and goals, calculated by the server from the saved records. */
+
+async function loadOverview() {
+    if (!me.email) {
+        return;
+    }
+
+    try {
+        overview = await apiJson('/api/guardian/overview', {}, 15000);
+
+    } catch (error) {
+        return;     /* the pages keep showing the last figures */
+    }
+
+    renderAwareness();
 }
 
 /* ==============================
@@ -582,11 +686,15 @@ async function openDashboard(profile) {
 
     navigateTo('homeView');
 
+    loadOverview();
+
     await loadPayments();
 
+    loadHe();
     loadNotifications(false);
     loadForecast(false);
     loadGuardianBadge();
+    warmAi();
 
     clearInterval(pollTimer);
 
@@ -623,6 +731,10 @@ function closeDashboard(note) {
     records = freshRecords();
     payments = [];
     forecast = null;
+    overview = null;
+    heHistory = [];
+    editingLoan = null;
+    editingGoal = null;
     homeData = null;
     homeReport = null;
     chatHistory = [];
@@ -634,8 +746,23 @@ function closeDashboard(note) {
         'Hi! Ask me something like “Can I afford ₹2,000 on shoes?” or “Prepare a payment of ₹800 to Ravi”.'));
 
     $('paymentResult').classList.add('hidden');
+    $('heResult').classList.add('hidden');
     $('bellBadge').classList.add('hidden');
     $('guardianBadge').classList.add('hidden');
+
+    heDrafts = {};
+    heMethod = 'MOBILE';
+    heMethodInfo = {};
+    hePayee = null;
+    heScanned = false;
+    heOpenRow = '';
+
+    stopLoanEdit();
+    stopGoalEdit();
+
+    $('heForm').reset();
+    $('heRecipientCard').classList.add('hidden');
+    $('heContactList').classList.add('hidden');
 
     $('loginEmail').focus();
 }
@@ -643,6 +770,11 @@ function closeDashboard(note) {
 /* ==============================
    NAVIGATION (bottom bar)
 ================================ */
+
+/* Wakes up an AI that runs on this computer, so its first notice is ready by the time you review a payment. */
+function warmAi() {
+    postJson('/api/guardian/warm', {}, 8000).catch(() => {});
+}
 
 function navigateTo(viewId, action) {
     const target = $(viewId);
@@ -653,6 +785,10 @@ function navigateTo(viewId, action) {
 
     if (currentView === 'paymentView' && viewId !== 'paymentView') {
         stopScan();
+    }
+
+    if (viewId === 'paymentView') {
+        warmAi();
     }
 
     currentView = viewId;
@@ -675,7 +811,11 @@ function navigateTo(viewId, action) {
         }
     });
 
-    $('dashboardMain').scrollTop = 0;
+    /* The page itself never scrolls: only the open panel does, and it starts at the top. */
+
+    target.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.scrollTop = 0;
+    });
 
     if (viewId === 'paymentView') {
         showPayTab(action === 'receive' ? 'receive' : 'send');
@@ -699,10 +839,24 @@ function navigateTo(viewId, action) {
 
     if (viewId === 'spendingView') {
         renderSpending();
+        renderMoney();
     }
 
     if (viewId === 'guardianView') {
         loadGuardian();
+    }
+
+    if (viewId === 'heView') {
+        renderHe();
+        loadHeMethods();
+        loadHe();
+
+    } else if (scanner === SCANNERS.he) {
+        stopScan();
+    }
+
+    if (viewId === 'homeView' || viewId === 'loanView' || viewId === 'goalView') {
+        loadOverview();
     }
 }
 
@@ -710,13 +864,42 @@ document.querySelectorAll('#bottomNav button').forEach(button => {
     button.addEventListener('click', () => navigateTo(button.dataset.view));
 });
 
+/* Tabs inside a screen: each screen shows one panel at a time, so nothing runs off the bottom. */
+
+function showSubtab(group, tab) {
+    document.querySelectorAll('.subtabs[data-group="' + group + '"] button').forEach(button => {
+        const active = button.dataset.tab === tab;
+
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    document.querySelectorAll('.tab-panel[data-group="' + group + '"]').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.tab !== tab);
+
+        panel.scrollTop = 0;
+    });
+
+    if (group === 'he' && tab !== 'pay') {
+        stopScan();
+    }
+}
+
+document.querySelectorAll('.subtabs').forEach(bar => {
+    bar.querySelectorAll('button').forEach(button => {
+        button.addEventListener('click', () => showSubtab(bar.dataset.group, button.dataset.tab));
+    });
+});
+
 /* ==============================
    RECORDS HELPERS
 ================================ */
 
+/* Everyday spending in a date range. An EMI marked as paid is tracked under Loans, so it does not use up a limit. */
+
 function spentBetween(fromKey, toKey) {
     return records.expenses
-        .filter(item => item.date >= fromKey && item.date <= toKey)
+        .filter(item => item.source !== 'emi' && item.date >= fromKey && item.date <= toKey)
         .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
@@ -741,12 +924,6 @@ function spentInPeriod(which) {
     }
 
     return spentBetween(t.slice(0, 4) + '-01-01', t.slice(0, 4) + '-12-31');
-}
-
-function nextEmi() {
-    return records.loans
-        .filter(item => item.due >= today())
-        .sort((a, b) => a.due.localeCompare(b.due))[0] || null;
 }
 
 function deleteRecord(listName, id) {
@@ -897,8 +1074,8 @@ function phoneKeyFrom(text) {
     return digits.length < 10 ? '' : digits.slice(-10);
 }
 
-function renderRecipientCard(info, message, state) {
-    const card = $('recipientCard');
+function renderRecipientCard(info, message, state, cardId) {
+    const card = $(cardId || 'recipientCard');
 
     card.replaceChildren();
     card.classList.remove('hidden', 'found');
@@ -974,6 +1151,8 @@ async function lookupRecipient() {
 $('payPhone').addEventListener('input', function() {
     scannedName = payMethod === 'QR' ? scannedName : '';
 
+    suggestContacts(CONTACT_BOXES.pay);
+
     clearTimeout(lookupTimer);
 
     const key = phoneKeyFrom(this.value);
@@ -997,6 +1176,15 @@ const CONTACT_TAGS = { SAVED: 'Saved', RECENT: 'Recent', PHONE: 'Phone' };
 
 /* Android Chrome can open the phone's own contact list. Other browsers read a contacts file instead. */
 const canPickContacts = !!(navigator.contacts && navigator.contacts.select);
+
+/* The two places where a person is chosen. Each has a box to type in and a list that opens under it. */
+
+const CONTACT_BOXES = {
+    pay: { input: 'payPhone', field: 'contactField', list: 'contactList', pick: contact => pickContact(contact) },
+    he: { input: 'hePhone', field: 'hePhoneField', list: 'heContactList', pick: contact => pickHeContact(contact) }
+};
+
+let contactBox = CONTACT_BOXES.pay;     /* the box used last, so the list can be redrawn after an import */
 
 function contactTools() {
     const row = makeElement('div', 'contact-tools');
@@ -1031,21 +1219,61 @@ function contactTools() {
     return row;
 }
 
-async function loadContacts(query) {
-    const box = $('contactList');
+/* What is typed in a contact box, as a search: the digits of a number, or the letters of a name. */
+
+function contactQuery(box) {
+    const text = $(box.input).value.trim();
+    const digits = text.replace(/\D/g, '');
+
+    const number = text !== '' && /^[+\d\s().-]*$/.test(text);
+
+    return { text: number ? digits : text, number, complete: number && digits.length >= 10 };
+}
+
+/*
+ * Like a phone's dialler: as you type a name or the first digits of a number, the people in your
+ * contacts who match are listed. A complete number needs no list; its owner's name is looked up.
+ */
+
+function suggestContacts(box) {
+    const query = contactQuery(box);
+
+    clearTimeout(contactTimer);
+
+    if (query.complete) {
+        $(box.list).classList.add('hidden');
+        return;
+    }
+
+    contactTimer = setTimeout(() => loadContacts(box), 200);
+}
+
+async function loadContacts(box) {
+    contactBox = box || contactBox;
+
+    const list = $(contactBox.list);
+    const query = contactQuery(contactBox);
+    const shownFor = contactBox;
 
     try {
-        const list = safeArray(await apiJson('/api/contacts?q=' + encodeURIComponent(query || ''), {}, 8000));
+        const found = safeArray(await apiJson('/api/contacts?q=' + encodeURIComponent(query.text), {}, 8000));
 
-        box.replaceChildren(contactTools());
+        /* The box may have changed while the server was answering. */
 
-        if (!list.length) {
-            box.appendChild(makeElement('div', 'empty-state', query
-                ? 'No contact matches. Type the mobile number below.'
+        if (shownFor !== contactBox || contactQuery(shownFor).text !== query.text) {
+            return;
+        }
+
+        list.replaceChildren(contactTools());
+
+        if (!found.length) {
+            list.appendChild(makeElement('div', 'empty-state', query.text
+                ? (query.number ? 'No contact has that number. Keep typing the full mobile number.'
+                    : 'No contact has that name. Type the mobile number instead.')
                 : 'No contacts yet. Add your phone contacts above, or pay someone and they appear here.'));
         }
 
-        list.forEach(c => {
+        found.forEach(c => {
             const item = makeElement('button', 'contact-item');
 
             item.type = 'button';
@@ -1065,15 +1293,19 @@ async function loadContacts(query) {
             item.appendChild(text);
             item.appendChild(makeElement('span', 'tag', CONTACT_TAGS[c.source] || 'Recent'));
 
-            item.addEventListener('click', () => pickContact(c));
+            item.addEventListener('click', () => {
+                list.classList.add('hidden');
 
-            box.appendChild(item);
+                shownFor.pick(c);
+            });
+
+            list.appendChild(item);
         });
 
-        box.classList.remove('hidden');
+        list.classList.remove('hidden');
 
     } catch (error) {
-        box.classList.add('hidden');
+        list.classList.add('hidden');
     }
 }
 
@@ -1207,7 +1439,7 @@ async function sendPhoneContacts(found) {
             (updated ? ' and updated ' + updated : '') + '. Search by name or number.'
         : 'Those contacts are already in Monetra.');
 
-    loadContacts($('contactSearch').value);
+    loadContacts(contactBox);
 }
 
 async function addPhoneContacts() {
@@ -1261,7 +1493,7 @@ $('contactsFile').addEventListener('change', async function() {
 });
 
 async function removePhoneContacts() {
-    if (!window.confirm('Remove all contacts that were added from your phone? Contacts you saved yourself stay.')) {
+    if (!await askConfirm('Remove all contacts that were added from your phone? Contacts you saved yourself stay.', 'Remove')) {
         return;
     }
 
@@ -1272,7 +1504,7 @@ async function removePhoneContacts() {
             ? 'Removed ' + result.removed + ' phone contact' + (result.removed === 1 ? '' : 's') + '.'
             : 'There were no phone contacts to remove.');
 
-        loadContacts($('contactSearch').value);
+        loadContacts(contactBox);
 
     } catch (error) {
         showToast(error.message);
@@ -1281,7 +1513,6 @@ async function removePhoneContacts() {
 
 function pickContact(contact) {
     $('contactList').classList.add('hidden');
-    $('contactSearch').value = '';
 
     setMethod('PHONE');
 
@@ -1313,7 +1544,7 @@ $('saveContact').addEventListener('click', async function() {
     let label = '';
 
     if (!payee.onMonetra) {
-        label = (window.prompt('Name for this contact (so you can find them later):', scannedName || '') || '').trim();
+        label = ((await askText('Name for this contact (so you can find them later):', scannedName || '')) || '').trim();
 
         if (!label) {
             return;
@@ -1332,22 +1563,22 @@ $('saveContact').addEventListener('click', async function() {
     }
 });
 
-$('contactSearch').addEventListener('focus', function() {
-    loadContacts(this.value);
-});
+/* Opening a box shows your contacts; clicking anywhere else closes the list. */
 
-$('contactSearch').addEventListener('input', function() {
-    clearTimeout(contactTimer);
-
-    const value = this.value;
-
-    contactTimer = setTimeout(() => loadContacts(value), 250);
+Object.values(CONTACT_BOXES).forEach(box => {
+    $(box.input).addEventListener('focus', function() {
+        if (!contactQuery(box).complete) {
+            loadContacts(box);
+        }
+    });
 });
 
 document.addEventListener('click', function(event) {
-    if (!$('contactField').contains(event.target) && !$('contactList').contains(event.target)) {
-        $('contactList').classList.add('hidden');
-    }
+    Object.values(CONTACT_BOXES).forEach(box => {
+        if (!$(box.field).contains(event.target) && !$(box.list).contains(event.target)) {
+            $(box.list).classList.add('hidden');
+        }
+    });
 });
 
 /* ==============================
@@ -1383,6 +1614,15 @@ function parseQr(text) {
     return { phone, name };
 }
 
+/* Where the camera, its button and its messages are. Pay and HE each have their own. */
+
+const SCANNERS = {
+    pay: { video: 'scanVideo', box: 'scannerBox', start: 'scanStart', message: 'scanMessage', read: info => applyScan(info) },
+    he: { video: 'heScanVideo', box: 'heScannerBox', start: 'heScanStart', message: 'heScanMessage', read: info => applyHeScan(info) }
+};
+
+let scanner = SCANNERS.pay;
+
 function applyScan(payeeInfo) {
     if (!payeeInfo.phone) {
         $('scanMessage').textContent =
@@ -1406,9 +1646,13 @@ function applyScan(payeeInfo) {
     return true;
 }
 
-async function startScan() {
+async function startScan(which) {
+    stopScan();
+
+    scanner = which || SCANNERS.pay;
+
     if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        $('scanMessage').textContent =
+        $(scanner.message).textContent =
             'Live scanning is not supported in this browser. Use "Choose QR image" to upload a photo or screenshot of the code.';
         return;
     }
@@ -1420,20 +1664,20 @@ async function startScan() {
         });
 
     } catch (error) {
-        $('scanMessage').textContent =
+        $(scanner.message).textContent =
             'Camera permission was not given. Allow the camera, or choose a QR image instead.';
         return;
     }
 
-    const video = $('scanVideo');
+    const video = $(scanner.video);
 
     video.srcObject = scanStream;
 
     await video.play().catch(function() { /* Autoplay can be blocked; the stream still attaches. */ });
 
-    $('scannerBox').classList.remove('hidden');
-    $('scanStart').textContent = 'Stop camera';
-    $('scanMessage').textContent = 'Point the camera at the QR code...';
+    $(scanner.box).classList.remove('hidden');
+    $(scanner.start).textContent = 'Stop camera';
+    $(scanner.message).textContent = 'Point the camera at the QR code...';
 
     const detector = new BarcodeDetector({ formats: ['qr_code'] });
 
@@ -1442,7 +1686,7 @@ async function startScan() {
             const found = await detector.detect(video);
 
             if (found.length) {
-                const ok = applyScan(parseQr(found[0].rawValue));
+                const ok = scanner.read(parseQr(found[0].rawValue));
 
                 if (ok) {
                     stopScan();
@@ -1466,39 +1710,21 @@ function stopScan() {
         scanStream = null;
     }
 
-    const box = $('scannerBox');
+    Object.values(SCANNERS).forEach(s => {
+        $(s.box).classList.add('hidden');
 
-    if (box) {
-        box.classList.add('hidden');
-    }
-
-    const button = $('scanStart');
-
-    if (button) {
-        button.textContent = 'Open camera';
-    }
+        $(s.start).textContent = 'Open camera';
+    });
 }
 
-$('scanStart').addEventListener('click', function() {
-    if (scanStream) {
-        stopScan();
-    } else {
-        startScan();
-    }
-});
+/* Reads a QR code from a photo or screenshot, on the server. */
 
-$('scanUpload').addEventListener('click', () => $('scanFile').click());
-
-$('scanFile').addEventListener('change', async function() {
-    const file = this.files && this.files[0];
-
-    this.value = '';
-
+async function readQrImage(file, which) {
     if (!file) {
         return;
     }
 
-    $('scanMessage').textContent = 'Reading the QR code...';
+    $(which.message).textContent = 'Reading the QR code...';
 
     try {
         const response = await fetch('/api/qr/decode', {
@@ -1513,11 +1739,33 @@ $('scanFile').addEventListener('change', async function() {
             throw new Error(data.error || 'Could not read that image.');
         }
 
-        applyScan(parseQr(data.text));
+        which.read(parseQr(data.text));
 
     } catch (error) {
-        $('scanMessage').textContent = error.message;
+        $(which.message).textContent = error.message;
     }
+}
+
+[['pay', 'scanStart', 'scanUpload', 'scanFile'], ['he', 'heScanStart', 'heScanUpload', 'heScanFile']].forEach(ids => {
+    const which = SCANNERS[ids[0]];
+
+    $(ids[1]).addEventListener('click', function() {
+        if (scanStream && scanner === which) {
+            stopScan();
+        } else {
+            startScan(which);
+        }
+    });
+
+    $(ids[2]).addEventListener('click', () => $(ids[3]).click());
+
+    $(ids[3]).addEventListener('change', function() {
+        const file = this.files && this.files[0];
+
+        this.value = '';
+
+        readQrImage(file, which);
+    });
 });
 
 /* ==============================
@@ -1682,11 +1930,14 @@ function hideReview() {
     $('reviewPanel').classList.add('hidden');
     $('reviewMessage').textContent = '';
     $('reviewFraud').replaceChildren();
+    $('reviewGuardian').replaceChildren();
 
     $('continuePaypal').disabled = false;
 }
 
 const PERIOD_NAMES = { daily: 'daily', weekly: 'weekly (7-day)', monthly: 'monthly', yearly: 'yearly' };
+
+/* Lines for the limits a payment respects. A broken limit is shown in the Guardian's red boxes instead. */
 
 function budgetLines(check) {
     const lines = [];
@@ -1695,15 +1946,11 @@ function budgetLines(check) {
         const name = PERIOD_NAMES[p.period] || p.period;
         const after = Number(p.remainingAfter);
 
-        if (p.level === 'over') {
-            lines.push({ bad: true, text: 'This payment puts you ' + money(Math.abs(after)) +
-                ' over your ' + name + ' limit of ' + money(p.limit) + '.' });
-
-        } else if (p.level === 'low') {
+        if (p.level === 'low') {
             lines.push({ warn: true, text: 'It fits your ' + name + ' limit but leaves only ' +
                 money(after) + ' of ' + money(p.limit) + '.' });
 
-        } else {
+        } else if (p.level !== 'over') {
             lines.push({ text: 'It fits your ' + name + ' limit and leaves ' + money(after) + '.' });
         }
     });
@@ -1711,49 +1958,73 @@ function budgetLines(check) {
     return lines;
 }
 
-const PERIOD_RESET = { daily: 'tomorrow', monthly: 'next month', yearly: 'next year' };
+const RISK_CLASS = { HIGH: 'high', MEDIUM: 'medium', LOW: 'low', UNKNOWN: 'unknown' };
 
-/* Plain advice worked out from the budget figures. Shown when the AI explanation is not available. */
-function guardianAdvice(check) {
-    const tips = [];
-    const periods = safeArray(check.periods);
+/* A small coloured label such as "Daily budget: High". */
 
-    if (!periods.length) {
-        return tips;
+function riskChip(text, level) {
+    return makeElement('span', 'risk-chip ' + (RISK_CLASS[level] || 'unknown'), text);
+}
+
+/*
+ * Guardian AI on the review screen. The server works out the risk in each area (daily budget,
+ * EMIs, savings goal); this shows it as a short summary and one red box per warning that applies.
+ * Returns true when there is at least one warning.
+ */
+
+function renderGuardianReview(guardian) {
+    const box = $('reviewGuardian');
+
+    box.replaceChildren();
+
+    if (!guardian) {
+        return false;
     }
 
-    const over = periods.find(p => p.level === 'over');
+    const impacts = safeArray(guardian.impacts);
+    const cards = safeArray(guardian.cards);
 
-    if (over) {
-        const name = PERIOD_NAMES[over.period] || over.period;
-        const limit = Number(over.limit);
-        const room = limit - Number(over.spent);
-        const times = Math.round(Number(check.amountInr) / limit);
-        const reset = PERIOD_RESET[over.period];
+    if (impacts.length) {
+        const strip = makeElement('div', 'impact-strip');
 
-        if (times >= 2) {
-            tips.push('This one payment is about ' + times + ' times your ' + name + ' limit.');
-        }
+        impacts.forEach(i => strip.appendChild(riskChip(i.area + ': ' + i.label, i.level)));
 
-        tips.push(room > 0
-            ? 'You had ' + money(room) + ' left before this payment. Paying ' + money(room) +
-                ' or less keeps you inside the limit.'
-            : 'You had already used all of your ' + name + ' limit before this payment.');
+        strip.appendChild(riskChip(guardian.overallLabel, guardian.overall));
 
-        tips.push('If this payment is planned, raise the limit in Spending first.' +
-            (reset ? ' If it can wait, your ' + over.period + ' limit starts again ' + reset + '.' : ''));
+        strip.lastChild.classList.add('overall');
+
+        box.appendChild(strip);
     }
 
-    const set = periods.map(p => p.period);
-    const missing = ['weekly', 'monthly'].filter(p => !set.includes(p));
-
-    if (missing.length) {
-        tips.push('No ' + missing.join(' or ') + ' limit is set, so this was checked only against your ' +
-            set.join(' and ') + (set.length > 1 ? ' limits' : ' limit') +
-            '. Add more limits in Spending for a fuller check.');
+    if (!cards.length) {
+        return false;
     }
 
-    return tips;
+    box.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
+
+    cards.forEach((card, index) => {
+        const item = makeElement('div', 'alert-card');
+
+        const head = makeElement('div', 'alert-card-head');
+
+        /* ①, ②, ③ ... */
+        head.appendChild(makeElement('span', 'alert-badge', String.fromCharCode(0x2460 + Math.min(index, 19))));
+        head.appendChild(makeElement('span', 'alert-card-title', card.title));
+        head.appendChild(makeElement('span', 'alert-icon', '⚠'));
+
+        item.appendChild(head);
+        item.appendChild(makeElement('p', '', card.text));
+
+        box.appendChild(item);
+    });
+
+    const options = safeArray(guardian.options);
+
+    if (options.length) {
+        box.appendChild(makeElement('p', 'alert-options', 'You could: ' + options.join(' ')));
+    }
+
+    return true;
 }
 
 async function startReview() {
@@ -1767,8 +2038,10 @@ async function startReview() {
     let risk;
 
     try {
+        /* The server finds the recipient's name itself, so the whole draft goes to both checks. */
+
         [check, risk] = await Promise.all([
-            postJson('/api/guardian/check', { amountInr: draft.amountInr }, 15000),
+            postJson('/api/guardian/check', draft, 15000),
             postJson('/api/payments/risk', draft, 15000)
         ]);
 
@@ -1785,17 +2058,19 @@ async function startReview() {
 
     draft.resolvedName = risk.recipientName;
 
+    const guardian = check.guardian || {};
     const lines = budgetLines(check);
-    const bad = lines.some(l => l.bad);
-    const warn = bad || lines.some(l => l.warn) || check.emiAtRisk || risk.flagged;
 
     $('paymentForm').classList.add('hidden');
     $('reviewPanel').classList.remove('hidden');
 
+    const alerting = renderGuardianReview(guardian);
+    const warn = alerting || lines.some(l => l.warn) || risk.flagged;
+
     const continueButton = $('continuePaypal');
 
     continueButton.disabled = risk.flagged;
-    continueButton.textContent = warn ? 'Skip & Continue' : 'Continue to PayPal';
+    continueButton.textContent = warn ? 'Continue Anyway' : 'Continue to PayPal';
 
     $('reviewMessage').textContent = '';
 
@@ -1823,13 +2098,13 @@ async function startReview() {
         daily ? (Number(daily.remainingAfter) < 0 ? 'var(--red)' : 'var(--green)') : ''
     ));
 
-    /* Rule-based advice is always shown first. */
+    /* What is fine, and what could not be checked. Warnings are in the red boxes above. */
 
     const rules = $('reviewRules');
 
     rules.replaceChildren();
 
-    if (!lines.length) {
+    if (!safeArray(check.periods).length) {
         rules.appendChild(makeElement('div', 'alert-box',
             'ℹ️ No spending limit is set, so Monetra cannot check this payment against a budget. ' +
             'Set one in Spending.'));
@@ -1837,25 +2112,17 @@ async function startReview() {
 
     lines.forEach(l => rules.appendChild(makeElement(
         'div',
-        'alert-box ' + (l.bad ? 'bad-box' : (l.warn ? 'warn-box' : 'good-box')),
-        (l.bad || l.warn ? '⚠️ ' : '✅ ') + l.text
+        'alert-box ' + (l.warn ? 'warn-box' : 'good-box'),
+        (l.warn ? '⚠️ ' : '✅ ') + l.text
     )));
 
-    if (check.emiDueSoon) {
-        rules.appendChild(makeElement(
-            'div',
-            'alert-box ' + (check.emiAtRisk ? 'warn-box' : 'good-box'),
-            (check.emiAtRisk ? '⚠️ ' : '✅ ') + check.nextEmiName + ' of ' +
-            money(check.nextEmiAmount) + ' is due on ' + displayDate(check.nextEmiDue) +
-            (check.emiAtRisk
-                ? '. After this payment, your budget this month may not cover it.'
-                : '. This payment still leaves room for it this month.')
-        ));
-    }
+    safeArray(guardian.notes).forEach(text => rules.appendChild(makeElement('div', 'alert-box', '🛡️ ' + text)));
+
+    safeArray(guardian.missing).forEach(text => rules.appendChild(makeElement('div', 'alert-box', 'ℹ️ ' + text)));
 
     showFraudBox(risk);
 
-    requestAiAdvice(check, run);
+    requestAiAdvice(alerting, run);
 }
 
 function showFraudBox(risk) {
@@ -1900,33 +2167,14 @@ function showFraudBox(risk) {
     box.appendChild(warn);
 }
 
-async function requestAiAdvice(check, run) {
+/* The AI puts the Guardian's findings into friendly words. The boxes above never depend on it. */
+
+async function requestAiAdvice(alerting, run) {
     const box = $('reviewAi');
 
-    box.replaceChildren();
+    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its notice...');
 
-    /* Monetra's own rules advise at once. The AI notice replaces them when it arrives. */
-
-    const tips = guardianAdvice(check);
-
-    if (tips.length) {
-        const advice = makeElement('div', 'alert-box' + (check.level === 'over' ? ' warn-box' : ''));
-
-        advice.appendChild(makeElement('strong', '', '🛡️ Guardian advice'));
-
-        const list = makeElement('ul');
-
-        tips.forEach(text => list.appendChild(makeElement('li', '', text)));
-
-        advice.appendChild(list);
-
-        box.appendChild(advice);
-    }
-
-    const waiting = makeElement('div', 'footer-note',
-        '🛡️ The Guardian AI is checking your limits, loans, EMIs and goals...');
-
-    box.appendChild(waiting);
+    box.replaceChildren(waiting);
 
     try {
         /* The server works out the figures from the saved records. A model on this computer can be slow to start. */
@@ -1935,37 +2183,60 @@ async function requestAiAdvice(check, run) {
             amountInr: draft.amountInr,
             recipientName: draft.resolvedName,
             description: draft.description
-        }, 45000);
+        }, 90000);
 
         if (run !== reviewRun) {
             return;
         }
 
-        box.replaceChildren(makeElement('div', 'alert-box' + (check.level === 'over' ? ' warn-box' : ''),
+        box.replaceChildren(makeElement('div', 'alert-box' + (alerting ? ' warn-box' : ''),
             '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 700)));
 
     } catch (error) {
-        if (run !== reviewRun) {
-            return;
-        }
+        /* No AI notice: everything it would say is already shown above. */
 
-        /* No AI: the rule-based advice stays. */
-
-        if (tips.length) {
-            waiting.textContent = 'This advice comes from Monetra\'s budget rules.';
-        } else {
-            waiting.remove();
+        if (run === reviewRun) {
+            box.replaceChildren();
         }
     }
 }
 
-$('editPayment').addEventListener('click', function() {
+/* Back to the payment form, with everything still filled in. */
+
+function backToPayForm(focusAmount) {
     reviewRun++;
 
     hideReview();
 
     $('paymentForm').classList.remove('hidden');
+
+    if (focusAmount) {
+        $('payAmount').focus();
+        $('payAmount').select();
+    }
+}
+
+$('editPayment').addEventListener('click', () => backToPayForm(false));
+
+$('adjustAmount').addEventListener('click', () => backToPayForm(true));
+
+$('reviewBudget').addEventListener('click', function() {
+    backToPayForm(false);
+
+    navigateTo('spendingView');
 });
+
+/* Sends the browser to PayPal's approval page, and nowhere else. */
+
+function goToPaypal(approvalUrl) {
+    const url = new URL(approvalUrl);
+
+    if (url.protocol !== 'https:' || !/(^|\.)paypal\.com$/.test(url.hostname)) {
+        throw new Error('The server returned an unexpected payment address.');
+    }
+
+    window.location.assign(url.toString());
+}
 
 $('continuePaypal').addEventListener('click', async function() {
     if (!draft) {
@@ -1986,15 +2257,9 @@ $('continuePaypal').addEventListener('click', async function() {
             confirmRisk: !!(confirm && confirm.checked)
         }, 30000);
 
-        const url = new URL(order.approvalUrl);
-
-        if (url.protocol !== 'https:' || !/(^|\.)paypal\.com$/.test(url.hostname)) {
-            throw new Error('The server returned an unexpected payment address.');
-        }
-
         message.textContent = 'Opening PayPal...';
 
-        window.location.assign(url.toString());
+        goToPaypal(order.approvalUrl);
 
     } catch (error) {
         if (error.status === 409 && error.data && error.data.needsConfirmation) {
@@ -2021,8 +2286,8 @@ window.addEventListener('pageshow', function(event) {
    PAYPAL RETURN (APPROVE / CANCEL)
 ================================ */
 
-function showPaymentResult(text, kind) {
-    const box = $('paymentResult');
+function showPaymentResult(text, kind, boxId) {
+    const box = $(boxId || 'paymentResult');
 
     box.className = 'alert-box' + (kind ? ' ' + kind : '');
 
@@ -2036,19 +2301,34 @@ async function handlePaypalReturn(params) {
 
     navigateTo('paymentView');
 
-    showPaymentResult('Checking your payment with PayPal...', '');
+    /* A home expense (HE) payment reports its result on the HE screen instead of Pay. */
+
+    let he = false;
+    let shown = null;
+
+    const show = (text, kind) => {
+        shown = { text, kind };
+
+        showPaymentResult(text, kind);
+    };
+
+    show('Checking your payment with PayPal...', '');
 
     try {
         if (flow === 'cancel') {
-            await postJson('/api/payments/' + encodeURIComponent(ref) + '/cancel', {}, 15000);
+            const cancelled = await postJson('/api/payments/' + encodeURIComponent(ref) + '/cancel', {}, 15000);
 
-            showPaymentResult('Payment cancelled. No money was taken.', 'bad-box');
+            he = !!(cancelled && cancelled.heType);
+
+            show('Payment cancelled. No money was taken.', 'bad-box');
 
         } else if (flow === 'return' && token) {
             const payment = await postJson('/api/payments/capture/' + encodeURIComponent(token), {}, 30000);
 
+            he = !!payment.heType;
+
             if (payment.status === 'COMPLETED') {
-                showPaymentResult(
+                show(
                     '✅ Payment completed and confirmed: ' + money(payment.amountInr) +
                     ' (' + usd(payment.amountUsd) + ') to ' + payment.counterparty +
                     '. Reference ' + String(payment.paymentId).slice(0, 8) + '.',
@@ -2056,7 +2336,7 @@ async function handlePaypalReturn(params) {
                 );
 
             } else {
-                showPaymentResult(
+                show(
                     'The payment was not completed (status: ' +
                     (STATUS_LABELS[payment.status] || payment.status) + '). ' + (payment.message || ''),
                     'bad-box'
@@ -2064,19 +2344,28 @@ async function handlePaypalReturn(params) {
             }
 
         } else {
-            showPaymentResult('This payment link is not valid.', 'bad-box');
+            show('This payment link is not valid.', 'bad-box');
         }
 
     } catch (error) {
-        showPaymentResult(
+        show(
             'Monetra could not confirm this payment: ' + error.message +
             ' Open Transactions and press Refresh to check it again.',
             'bad-box'
         );
     }
 
+    if (he) {
+        $('paymentResult').classList.add('hidden');
+
+        navigateTo('heView');
+
+        showPaymentResult(shown.text, shown.kind, 'heResult');
+    }
+
     await loadPayments();
 
+    loadHe();
     loadNotifications(false);
 }
 
@@ -2181,7 +2470,9 @@ function activityItems() {
         });
     });
 
-    records.expenses.filter(e => e.source !== 'paypal').forEach(e => {
+    /* Home expenses (HE) have their own history, so they are not repeated here. */
+
+    records.expenses.filter(e => e.source !== 'paypal' && e.source !== 'he').forEach(e => {
         items.push({
             kind: 'EXPENSE',
             title: e.name,
@@ -2311,6 +2602,7 @@ async function recoverPayment(paymentId, button) {
 
     await loadPayments();
 
+    loadHe();
     loadNotifications(false);
 }
 
@@ -2506,7 +2798,7 @@ function renderSpending() {
             '🚨 You are ' + money(spent - limit) + ' over your ' + period + ' limit of ' + money(limit) + '.'));
 
     } else {
-        status.textContent = spent > limit * 0.8 ? 'Almost there' : 'On track';
+        status.textContent = (spent > limit * 0.8 ? 'Almost there' : 'On track') + ' • ' + Math.round(spent / limit * 100) + '% used';
         status.style.color = spent > limit * 0.8 ? 'var(--amber)' : 'var(--green)';
 
         alertBox.appendChild(makeElement('div', 'alert-box good-box',
@@ -2724,26 +3016,180 @@ $('forecastExplain').addEventListener('click', async function() {
    LOANS AND EMI
 ================================ */
 
+const LOAN_FREQUENCY = { MONTHLY: 'monthly', WEEKLY: 'weekly', YEARLY: 'yearly' };
+
+/* A number from an optional field: empty means "not given" and is saved as 0. */
+
+function optionalNumber(id) {
+    const text = $(id).value.trim();
+
+    return text === '' ? 0 : Number(text);
+}
+
+function activeLoans() {
+    return records.loans.filter(loan => loan.status !== 'CLOSED');
+}
+
 $('loanForm').addEventListener('submit', function(event) {
     event.preventDefault();
 
-    const name = $('loanName').value.trim();
-    const amount = Number($('loanAmount').value);
-    const due = $('loanDue').value;
-    const notes = $('loanNotes').value.trim();
+    const loan = {
+        name: $('loanName').value.trim(),
+        amount: Number($('loanAmount').value),
+        due: $('loanDue').value,
+        original: optionalNumber('loanOriginal'),
+        outstanding: optionalNumber('loanOutstanding'),
+        rate: optionalNumber('loanRate'),
+        installmentsLeft: Math.round(optionalNumber('loanInstallments')),
+        frequency: $('loanFrequency').value,
+        status: $('loanStatus').value,
+        notes: $('loanNotes').value.trim()
+    };
 
-    if (!name || !validAmount(amount) || !due) {
+    if (!loan.name || !validAmount(loan.amount) || !loan.due) {
         return;
     }
 
-    records.loans.unshift({ id: Date.now(), name, amount, due, notes });
+    const amounts = [loan.original, loan.outstanding, loan.rate, loan.installmentsLeft];
+
+    if (amounts.some(n => !Number.isFinite(n) || n < 0) || loan.original > 1000000000 ||
+        loan.outstanding > 1000000000 || loan.rate > 100 || loan.installmentsLeft > 1200) {
+
+        showToast('Check the loan amounts: they cannot be negative, and the interest rate is at most 100%.');
+        return;
+    }
+
+    if (loan.original > 0 && loan.outstanding > loan.original) {
+        showToast('The outstanding balance cannot be more than the original loan amount.');
+        return;
+    }
+
+    const existing = records.loans.find(item => item.id === editingLoan);
+
+    if (existing) {
+        Object.assign(existing, loan);
+
+        showToast('Loan updated.');
+
+    } else {
+        records.loans.unshift({ id: Date.now(), ...loan });
+
+        showToast('Loan added.');
+    }
 
     saveRecords();
 
-    this.reset();
+    stopLoanEdit();
 
     renderAll();
 });
+
+function editLoan(loan) {
+    editingLoan = loan.id;
+
+    $('loanFormTitle').textContent = 'Edit Loan';
+    $('loanSubmit').textContent = 'Save Changes';
+    $('loanCancel').classList.remove('hidden');
+
+    $('loanName').value = loan.name || '';
+    $('loanAmount').value = loan.amount || '';
+    $('loanDue').value = loan.due || '';
+    $('loanOriginal').value = loan.original || '';
+    $('loanOutstanding').value = loan.outstanding || '';
+    $('loanRate').value = loan.rate || '';
+    $('loanInstallments').value = loan.installmentsLeft || '';
+    $('loanFrequency').value = LOAN_FREQUENCY[loan.frequency] ? loan.frequency : 'MONTHLY';
+    $('loanStatus').value = loan.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE';
+    $('loanNotes').value = loan.notes || '';
+
+    showSubtab('loan', 'add');
+
+    $('loanName').focus();
+}
+
+function stopLoanEdit() {
+    editingLoan = null;
+
+    $('loanForm').reset();
+
+    $('loanFormTitle').textContent = 'Add Loan / EMI';
+    $('loanSubmit').textContent = 'Add Loan';
+    $('loanCancel').classList.add('hidden');
+}
+
+$('loanCancel').addEventListener('click', stopLoanEdit);
+
+/* The date one payment period after a date ("2026-11-05" monthly -> "2026-12-05"). */
+
+function nextDueDate(due, frequency) {
+    const d = new Date(due + 'T00:00:00');
+
+    if (Number.isNaN(d.getTime())) {
+        return due;
+    }
+
+    if (frequency === 'WEEKLY') {
+        d.setDate(d.getDate() + 7);
+
+    } else if (frequency === 'YEARLY') {
+        d.setFullYear(d.getFullYear() + 1);
+
+    } else {
+        const day = d.getDate();
+
+        d.setDate(1);
+        d.setMonth(d.getMonth() + 1);
+        d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    }
+
+    return dateKey(d);
+}
+
+/*
+ * The user says they paid this EMI. The loan moves to its next due date, the outstanding balance
+ * goes down by the part of the EMI that is not interest, and the EMI is recorded as an expense.
+ */
+
+async function markEmiPaid(loan) {
+    if (!await askConfirm('Mark the EMI of ' + money(loan.amount) + ' for "' + loan.name + '" as paid?\n\n' +
+        'Monetra records it as an expense and moves the loan to its next due date. No money is moved.', 'Mark as paid')) {
+        return;
+    }
+
+    const emi = Number(loan.amount) || 0;
+    const outstanding = Number(loan.outstanding) || 0;
+    const left = Number(loan.installmentsLeft) || 0;
+
+    if (outstanding > 0) {
+        const perYear = loan.frequency === 'WEEKLY' ? 52 : (loan.frequency === 'YEARLY' ? 1 : 12);
+        const interest = outstanding * (Number(loan.rate) || 0) / 100 / perYear;
+
+        loan.outstanding = Math.max(0, Math.round((outstanding - Math.max(0, emi - interest)) * 100) / 100);
+    }
+
+    if (left > 0) {
+        loan.installmentsLeft = left - 1;
+    }
+
+    records.expenses.unshift({ id: Date.now(), name: 'EMI: ' + loan.name, amount: emi, date: today(), source: 'emi' });
+
+    /* Fully repaid: the balance reached zero, or this was the last installment. */
+
+    if ((outstanding > 0 && loan.outstanding === 0) || left === 1) {
+        loan.status = 'CLOSED';
+
+        showToast('EMI recorded. "' + loan.name + '" is fully repaid 🎉');
+
+    } else {
+        loan.due = nextDueDate(loan.due, loan.frequency);
+
+        showToast('EMI recorded. Next one is due on ' + displayDate(loan.due) + '.');
+    }
+
+    saveRecords();
+
+    renderAll();
+}
 
 /* An EMI is paid every month, so this is what it costs per day, per month and per year. */
 function emiPlan(amount) {
@@ -2758,25 +3204,19 @@ function renderLoanPlan() {
 
     box.replaceChildren();
 
-    if (!records.loans.length) {
+    const loans = activeLoans();
+
+    if (!loans.length) {
         return;
     }
 
-    const plan = emiPlan(records.loans.reduce((sum, loan) => sum + Number(loan.amount || 0), 0));
-    const next = nextEmi();
+    const monthly = overview && overview.loans ? Number(overview.loans.monthlyEmi) :
+        loans.reduce((sum, loan) => sum + Number(loan.amount || 0), 0);
 
-    box.appendChild(makeElement('div', 'hint', 'To cover your EMIs, you must save:'));
+    const plan = emiPlan(monthly);
 
-    const grid = makeElement('div', 'stat-grid');
-
-    grid.append(
-        statBox('Every day', money(plan.daily)),
-        statBox('Every month', money(plan.monthly)),
-        statBox('Every year', money(plan.yearly)),
-        statBox('Next EMI due', next ? displayDate(next.due) : 'Overdue', next ? '' : 'var(--red)')
-    );
-
-    box.appendChild(grid);
+    box.appendChild(makeElement('div', 'alert-box', '💰 To cover your EMIs, you must save ' + money(plan.daily) +
+        ' a day, ' + money(plan.monthly) + ' a month or ' + money(plan.yearly) + ' a year.'));
 
     const period = ['monthly', 'daily', 'yearly'].find(p => Number(records.limits[p]) > 0);
 
@@ -2795,35 +3235,208 @@ function renderLoanPlan() {
             ' ' + period + ' spending limit (' + Math.round(need / limit * 100) + '%).'));
 }
 
+/* Loan Guardian: totals, the risk before the next income, the EMI calendar and next month's forecast. */
+
+function renderLoanGuardian() {
+    const data = overview && overview.loans ? overview.loans : null;
+
+    const chip = $('loanRiskChip');
+    const dash = $('loanDash');
+    const calendar = $('loanCalendar');
+
+    dash.replaceChildren();
+    calendar.replaceChildren();
+
+    $('loanRiskText').replaceChildren();
+    $('loanForecast').replaceChildren();
+
+    if (!data || !data.count) {
+        chip.className = 'risk-chip unknown';
+        chip.textContent = 'No loans';
+
+        calendar.appendChild(makeElement('div', 'empty-state', 'Add a loan below to see your EMI dates here.'));
+
+    } else {
+        chip.className = 'risk-chip ' + (RISK_CLASS[data.status] || 'unknown');
+        chip.textContent = data.statusLabel;
+
+        const next = data.next;
+
+        dash.append(
+            statBox('Total outstanding', money(data.totalOutstanding)),
+            statBox('EMI due this month', money(data.emiThisMonth)),
+            statBox('Next EMI', next ? money(next.amount) + ' • ' + displayDate(next.date) : 'None soon',
+                next && next.overdue ? 'var(--red)' : ''),
+            statBox('Reserved for EMIs', money(data.reserved))
+        );
+
+        $('loanRiskText').appendChild(makeElement(
+            'div',
+            'alert-box ' + (data.status === 'HIGH' ? 'bad-box' : (data.status === 'MEDIUM' ? 'warn-box' : '')),
+            (data.status === 'HIGH' ? '🚨 ' : (data.status === 'MEDIUM' ? '⚠️ ' : '🛡️ ')) + data.text
+        ));
+
+        const rows = safeArray(data.calendar);
+
+        if (!rows.length) {
+            calendar.appendChild(makeElement('div', 'empty-state', 'No EMI is due in the next 60 days.'));
+        }
+
+        rows.forEach(row => {
+            const item = makeElement('div', 'record-item');
+
+            const left = makeElement('div', 'row');
+
+            const d = new Date(row.date + 'T00:00:00');
+
+            const day = makeElement('span', 'cal-day' + (row.overdue ? ' overdue' : ''));
+
+            day.appendChild(makeElement('strong', '', String(d.getDate())));
+            day.appendChild(document.createTextNode(d.toLocaleDateString('en-IN', { month: 'short' })));
+
+            left.appendChild(day);
+
+            const text = makeElement('div');
+
+            text.appendChild(makeElement('strong', '', row.name));
+
+            text.appendChild(makeElement('div', 'sub' + (row.overdue ? ' warn' : ''),
+                row.overdue ? 'Overdue: not marked paid'
+                    : (Number(row.inDays) === 0 ? 'Due today' : 'In ' + row.inDays + ' day' + (Number(row.inDays) === 1 ? '' : 's'))));
+
+            left.appendChild(text);
+
+            item.appendChild(left);
+            item.appendChild(makeElement('div', 'transaction-amount', money(row.amount)));
+
+            calendar.appendChild(item);
+        });
+    }
+
+    /* Next month: confirmed commitments against the income the user gave. Never an invented income. */
+
+    const f = overview && overview.nextMonth ? overview.nextMonth : null;
+
+    if (!f) {
+        return;
+    }
+
+    const box = $('loanForecast');
+
+    if (f.known) {
+        const grid = makeElement('div', 'stat-grid');
+
+        grid.append(
+            statBox('Expected income', money(f.expectedIncome)),
+            statBox('EMIs', '− ' + money(f.emis)),
+            statBox('Essentials and bills', '− ' + money(Number(f.essentials) + Number(f.bills))),
+            statBox('Planned savings', '− ' + money(f.savingsContributions))
+        );
+
+        box.appendChild(grid);
+    }
+
+    box.appendChild(makeElement(
+        'div',
+        'alert-box ' + (f.known && Number(f.projectedRemaining) < 0 ? 'bad-box' : ''),
+        (f.known ? (Number(f.projectedRemaining) < 0 ? '🚨 ' : '🛡️ ') : 'ℹ️ ') + f.text
+    ));
+}
+
 function updateLoans() {
-    $('loanCount').textContent = records.loans.length + ' ACTIVE';
+    $('loanCount').textContent = activeLoans().length + ' ACTIVE';
 
     renderLoanPlan();
 
     renderRecords('loansList', records.loans, 'No loans or EMI reminders added yet.', loan => {
-        const overdue = loan.due < today();
-        const dueToday = loan.due === today();
+        const closed = loan.status === 'CLOSED';
+        const overdue = !closed && loan.due < today();
+        const dueToday = !closed && loan.due === today();
 
-        const label = overdue ? 'OVERDUE' : (dueToday ? 'DUE TODAY' : 'Due ' + displayDate(loan.due));
+        const label = closed ? 'CLOSED' : (overdue ? 'OVERDUE' : (dueToday ? 'DUE TODAY' : 'Due ' + displayDate(loan.due)));
 
-        const plan = emiPlan(loan.amount);
+        const card = makeElement('div', 'record-item loan-item');
 
-        const card = recordCard(
-            loan.name,
-            label + ' • EMI: ' + money(loan.amount) + (loan.notes ? ' • ' + loan.notes : ''),
-            'Save ' + money(plan.daily) + ' a day • ' + money(plan.monthly) + ' a month • ' +
-                money(plan.yearly) + ' a year',
-            'Delete',
-            () => deleteRecord('loans', loan.id),
-            '🏦'
-        );
+        const info = makeElement('div');
 
-        if (overdue || dueToday) {
-            const note = makeElement('div', 'sub warn',
-                overdue ? '⚠️ This EMI due date has passed.' : '⚠️ This EMI is due today.');
+        info.appendChild(makeElement('strong', '', '🏦 ' + loan.name));
 
-            card.querySelector('.row > div').appendChild(note);
+        info.appendChild(makeElement('div', 'sub' + (overdue || dueToday ? ' warn' : ''),
+            label + ' • EMI ' + money(loan.amount) + ' ' + (LOAN_FREQUENCY[loan.frequency] || 'monthly')));
+
+        const facts = [];
+
+        if (Number(loan.outstanding) > 0) {
+            facts.push('Outstanding ' + money(loan.outstanding) +
+                (Number(loan.original) > 0 ? ' of ' + money(loan.original) : ''));
         }
+
+        if (Number(loan.rate) > 0) {
+            facts.push(Number(loan.rate) + '% a year');
+        }
+
+        if (Number(loan.installmentsLeft) > 0) {
+            facts.push(loan.installmentsLeft + ' installment' + (Number(loan.installmentsLeft) === 1 ? '' : 's') + ' left');
+        }
+
+        if (loan.notes) {
+            facts.push(loan.notes);
+        }
+
+        if (facts.length) {
+            info.appendChild(makeElement('div', 'sub', facts.join(' • ')));
+        }
+
+        if (Number(loan.original) > 0 && Number(loan.outstanding) >= 0) {
+            const progress = makeElement('div', 'progress');
+            const bar = makeElement('div', 'progress-bar');
+
+            bar.style.width = Math.min(100, Math.max(0, (1 - Number(loan.outstanding) / Number(loan.original)) * 100)) + '%';
+
+            progress.appendChild(bar);
+
+            info.appendChild(progress);
+        }
+
+        const actions = makeElement('div', 'row-actions');
+
+        if (!closed) {
+            const paid = makeElement('button', 'btn-gold', 'Mark EMI paid');
+
+            paid.type = 'button';
+
+            paid.addEventListener('click', () => markEmiPaid(loan));
+
+            actions.appendChild(paid);
+        }
+
+        const edit = makeElement('button', '', 'Edit');
+
+        edit.type = 'button';
+
+        edit.addEventListener('click', () => editLoan(loan));
+
+        actions.appendChild(edit);
+
+        const del = makeElement('button', '', 'Delete');
+
+        del.type = 'button';
+
+        del.addEventListener('click', async () => {
+            if (await askConfirm('Delete the loan "' + loan.name + '"?', 'Delete')) {
+                if (editingLoan === loan.id) {
+                    stopLoanEdit();
+                }
+
+                deleteRecord('loans', loan.id);
+            }
+        });
+
+        actions.appendChild(del);
+
+        info.appendChild(actions);
+
+        card.appendChild(info);
 
         return card;
     });
@@ -2832,6 +3445,8 @@ function updateLoans() {
 /* ==============================
    SAVINGS AND GOALS
 ================================ */
+
+const GOAL_PRIORITY = { HIGH: 'High priority', MEDIUM: 'Medium priority', LOW: 'Low priority' };
 
 $('savingsForm').addEventListener('submit', function(event) {
     event.preventDefault();
@@ -2859,22 +3474,121 @@ $('goalForm').addEventListener('submit', function(event) {
     const name = $('goalName').value.trim();
     const target = Number($('goalTarget').value);
     const saved = Number($('goalSaved').value);
+    const targetDate = $('goalDate').value;
+    const monthly = optionalNumber('goalMonthly');
+    const remindDay = Math.round(optionalNumber('goalRemind'));
 
-    if (!name || !validAmount(target) || !Number.isFinite(saved) || saved < 0 || saved > 1000000000) {
+    if (!name || !validAmount(target) || !Number.isFinite(saved) || saved < 0 || saved > 1000000000 ||
+        !Number.isFinite(monthly) || monthly < 0 || monthly > 1000000000) {
+
         showToast('Enter valid goal amounts.');
         return;
     }
 
-    records.goals.unshift({ id: Date.now(), name, target, saved });
+    if (!Number.isFinite(remindDay) || remindDay < 0 || remindDay > 28) {
+        showToast('The reminder day must be from 1 to 28.');
+        return;
+    }
+
+    const existing = records.goals.find(item => item.id === editingGoal);
+
+    if (targetDate && targetDate <= today() && (!existing || existing.targetDate !== targetDate)) {
+        showToast('Choose a target date in the future.');
+        return;
+    }
+
+    const goal = { name, target, saved, targetDate, monthly, priority: $('goalPriority').value, remindDay };
+
+    if (existing) {
+        /* A new date or target starts a new plan from today, so "behind plan" is measured fairly. */
+
+        if (existing.targetDate !== targetDate || Number(existing.target) !== target) {
+            goal.createdDate = today();
+            goal.startSaved = saved;
+        }
+
+        Object.assign(existing, goal);
+
+        showToast('Goal updated.');
+
+    } else {
+        records.goals.unshift({ id: Date.now(), ...goal, createdDate: today(), startSaved: saved });
+
+        showToast('Goal added.');
+    }
 
     saveRecords();
 
-    this.reset();
-
-    $('goalSaved').value = '0';
+    stopGoalEdit();
 
     renderAll();
 });
+
+function editGoal(goal) {
+    editingGoal = goal.id;
+
+    $('goalFormTitle').textContent = 'Edit Goal';
+    $('goalSubmit').textContent = 'Save Changes';
+    $('goalCancel').classList.remove('hidden');
+
+    $('goalName').value = goal.name || '';
+    $('goalTarget').value = goal.target || '';
+    $('goalSaved').value = Number(goal.saved) || 0;
+    $('goalDate').value = goal.targetDate || '';
+    $('goalMonthly').value = goal.monthly || '';
+    $('goalPriority').value = GOAL_PRIORITY[goal.priority] ? goal.priority : 'MEDIUM';
+    $('goalRemind').value = goal.remindDay || '';
+
+    showSubtab('goal', 'add');
+
+    $('goalName').focus();
+}
+
+function stopGoalEdit() {
+    editingGoal = null;
+
+    $('goalForm').reset();
+
+    $('goalSaved').value = '0';
+
+    $('goalFormTitle').textContent = 'Create a Goal';
+    $('goalSubmit').textContent = 'Add Goal';
+    $('goalCancel').classList.add('hidden');
+}
+
+$('goalCancel').addEventListener('click', stopGoalEdit);
+
+/* The user says they put money aside for this goal. Only this changes a goal's saved amount. */
+
+async function addGoalSavings(goal) {
+    const typed = await askText('How much did you save for "' + goal.name + '"? (₹)', goal.monthly || '');
+
+    if (typed === null) {
+        return;
+    }
+
+    const amount = Math.round(Number(typed) * 100) / 100;
+
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) {
+        showToast('Enter an amount greater than ₹0.');
+        return;
+    }
+
+    goal.saved = Math.round((Number(goal.saved) + amount) * 100) / 100;
+
+    goal.contributions = safeArray(goal.contributions).slice(-49);
+    goal.contributions.push({ date: today(), amount });
+
+    records.savings.unshift({ id: Date.now(), name: 'For ' + goal.name, amount, period: 'Goal', date: today() });
+
+    saveRecords();
+
+    renderAll();
+
+    showToast(goal.saved >= goal.target
+        ? '🎉 You reached your goal "' + goal.name + '"!'
+        : money(amount) + ' added to "' + goal.name + '".');
+}
 
 function updateSavings() {
     const total = records.savings.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -2891,20 +3605,41 @@ function updateSavings() {
     ));
 }
 
+/* The server's figures for one goal (required saving, shortfall, advice), matched by id. */
+
+function goalFigures(goal) {
+    return safeArray(overview && overview.goals).find(g => String(g.id) === String(goal.id)) || null;
+}
+
 function updateGoals() {
     renderRecords('goalsList', records.goals, 'No savings goals created yet. Once you add a goal, it will appear here to track your progress.', goal => {
         const pct = Math.min(100, goal.target > 0 ? (goal.saved / goal.target) * 100 : 0);
+        const figures = goalFigures(goal);
+        const reached = Number(goal.saved) >= Number(goal.target);
 
-        const card = makeElement('div', 'record-item');
+        const card = makeElement('div', 'record-item goal-item');
 
         const info = makeElement('div');
 
         info.style.width = '100%';
 
-        info.appendChild(makeElement('strong', '', '🎯 ' + goal.name));
+        const head = makeElement('div', 'goal-head');
+
+        head.appendChild(makeElement('strong', '', '🎯 ' + goal.name));
+
+        if (figures && !reached) {
+            const labels = { BEHIND: 'Behind plan', ON_TRACK: 'On track', DATE_PASSED: 'Date passed', NO_DATE: 'No date' };
+            const levels = { BEHIND: 'HIGH', ON_TRACK: 'LOW', DATE_PASSED: 'MEDIUM', NO_DATE: 'UNKNOWN' };
+
+            head.appendChild(riskChip(labels[figures.status] || '', levels[figures.status]));
+        }
+
+        info.appendChild(head);
 
         info.appendChild(makeElement('div', 'sub',
-            money(goal.saved) + ' saved of ' + money(goal.target) + ' • ' + Math.round(pct) + '%'));
+            money(goal.saved) + ' saved of ' + money(goal.target) + ' • ' + Math.round(pct) + '%' +
+            (goal.targetDate ? ' • by ' + displayDate(goal.targetDate) : '') +
+            ' • ' + (GOAL_PRIORITY[goal.priority] || GOAL_PRIORITY.MEDIUM)));
 
         const progress = makeElement('div', 'progress');
 
@@ -2916,44 +3651,236 @@ function updateGoals() {
 
         info.appendChild(progress);
 
-        info.appendChild(makeElement('div', 'sub',
-            goal.saved >= goal.target
-                ? '🎉 Goal reached!'
-                : 'Still need ' + money(Math.max(0, goal.target - goal.saved))));
+        if (reached) {
+            info.appendChild(makeElement('div', 'sub', '🎉 Goal reached!'));
 
-        card.appendChild(info);
+        } else {
+            info.appendChild(makeElement('div', 'sub', 'Still need ' + money(Math.max(0, goal.target - goal.saved))));
 
-        const del = makeElement('button', 'small-button', 'Delete');
+            if (figures && figures.requiredMonthly !== undefined) {
+                info.appendChild(makeElement('div', 'sub',
+                    'To reach it by ' + displayDate(figures.targetDate) + ', save about ' + money(figures.requiredMonthly) +
+                    ' a month (' + money(figures.requiredWeekly) + ' a week, ' + money(figures.requiredDaily) + ' a day).'));
+            }
+
+            if (figures && Number(figures.plannedMonthly) > 0 && figures.estimatedCompletion) {
+                info.appendChild(makeElement('div', 'sub',
+                    'At your planned ' + money(figures.plannedMonthly) + ' a month you would reach it around ' +
+                    new Date(figures.estimatedCompletion + 'T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) + '.'));
+            }
+
+            if (figures && figures.advice) {
+                info.appendChild(makeElement('div',
+                    'alert-box ' + (figures.status === 'BEHIND' ? 'warn-box' : ''), '⚠️ ' + figures.advice));
+            }
+        }
+
+        const actions = makeElement('div', 'row-actions');
+
+        if (!reached) {
+            const add = makeElement('button', 'btn-gold', 'Add savings');
+
+            add.type = 'button';
+
+            add.addEventListener('click', () => addGoalSavings(goal));
+
+            actions.appendChild(add);
+        }
+
+        const edit = makeElement('button', '', 'Edit');
+
+        edit.type = 'button';
+
+        edit.addEventListener('click', () => editGoal(goal));
+
+        actions.appendChild(edit);
+
+        const del = makeElement('button', '', 'Delete');
 
         del.type = 'button';
 
-        del.addEventListener('click', () => deleteRecord('goals', goal.id));
+        del.addEventListener('click', async () => {
+            if (await askConfirm('Delete the goal "' + goal.name + '"?', 'Delete')) {
+                if (editingGoal === goal.id) {
+                    stopGoalEdit();
+                }
 
-        card.appendChild(del);
+                deleteRecord('goals', goal.id);
+            }
+        });
+
+        actions.appendChild(del);
+
+        info.appendChild(actions);
+
+        card.appendChild(info);
 
         return card;
     });
 }
 
 /* ==============================
+   FINANCIAL AWARENESS CARDS (Home) AND "MY MONEY"
+================================ */
+
+function setChip(id, text, level) {
+    const chip = $(id);
+
+    chip.className = 'risk-chip ' + (RISK_CLASS[level] || 'unknown');
+    chip.textContent = text;
+}
+
+/* Redraws everything that shows the server's Guardian figures: Home cards, Loan Guardian, goals, My money. */
+
+function renderAwareness() {
+    const o = overview || {};
+
+    /* Card 1: daily budget. */
+
+    const daily = o.daily;
+
+    if (daily && daily.limitSet) {
+        setChip('awareDailyChip', daily.statusLabel, daily.status);
+
+        $('awareDailyMain').textContent = Number(daily.overBy) > 0
+            ? money(daily.overBy) + ' over today\'s limit of ' + money(daily.limit)
+            : money(daily.remaining) + ' left of ' + money(daily.limit) + ' today';
+
+        $('awareDailySub').textContent = 'Spent today ' + money(daily.spentToday) + ' • ' + daily.percentUsed + '% of your daily limit used';
+
+    } else {
+        setChip('awareDailyChip', 'No limit set', 'UNKNOWN');
+
+        $('awareDailyMain').textContent = 'Set a daily limit to see what is left today.';
+        $('awareDailySub').textContent = daily ? 'Spent today ' + money(daily.spentToday) : '';
+    }
+
+    /* Card 2: loans. */
+
+    const loans = o.loans;
+
+    if (loans && loans.count) {
+        setChip('awareLoansChip', loans.statusLabel, loans.status);
+
+        $('awareLoansMain').textContent = loans.next
+            ? 'Next EMI ' + money(loans.next.amount) + (loans.next.overdue ? ' is overdue' : ' on ' + displayDate(loans.next.date))
+            : 'No EMI due in the next 60 days';
+
+        $('awareLoansSub').textContent = 'EMIs this month ' + money(loans.emiThisMonth) +
+            ' • Outstanding ' + money(loans.totalOutstanding);
+
+    } else {
+        setChip('awareLoansChip', 'No loans', 'UNKNOWN');
+
+        $('awareLoansMain').textContent = 'Add a loan to see your EMIs and reminders.';
+        $('awareLoansSub').textContent = '';
+    }
+
+    /* Card 3: the active savings goal. */
+
+    const goal = o.activeGoal;
+
+    if (goal) {
+        setChip('awareGoalsChip', goal.percent + '%', goal.status === 'BEHIND' ? 'HIGH' : 'LOW');
+
+        $('awareGoalsMain').textContent = goal.name + ': ' + money(goal.saved) + ' of ' + money(goal.target);
+
+        $('awareGoalsSub').textContent = money(goal.remaining) + ' to go' +
+            (goal.status === 'BEHIND' ? ' • ' + money(goal.shortfall) + ' behind plan'
+                : (goal.estimatedCompletion
+                    ? ' • on course for ' + new Date(goal.estimatedCompletion + 'T00:00:00')
+                        .toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+                    : ''));
+
+    } else {
+        const any = safeArray(o.goals).length > 0;
+
+        setChip('awareGoalsChip', any ? 'Reached' : 'No goal', any ? 'LOW' : 'UNKNOWN');
+
+        $('awareGoalsMain').textContent = any ? 'All your goals are reached 🎉' : 'Create a goal and track it.';
+        $('awareGoalsSub').textContent = '';
+    }
+
+    renderLoanGuardian();
+    renderLoanPlan();
+    updateGoals();
+    renderMoney();
+}
+
+/* My money: what the Guardian needs to judge EMIs, bills and goals. */
+
+function renderMoney() {
+    const p = records.profile || {};
+    const m = overview && overview.money ? overview.money : null;
+
+    $('moneyNow').textContent = m && m.balanceKnown ? 'Now ' + money(m.balance) : 'Not set';
+
+    const fill = (id, value) => {
+        if (document.activeElement !== $(id)) {
+            $(id).value = value === undefined || value === null || value === 0 ? '' : value;
+        }
+    };
+
+    /* The balance box shows the balance as it stands now, after everything recorded since it was typed. */
+
+    fill('moneyBalance', m && m.balanceKnown ? Number(m.balance) : p.balance);
+    fill('moneyIncome', p.monthlyIncome);
+    fill('moneyPayday', p.payday);
+    fill('moneyEssentials', p.essentials);
+    fill('moneyBuffer', p.buffer);
+}
+
+$('moneyForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    const balanceText = $('moneyBalance').value.trim();
+
+    const values = {
+        monthlyIncome: optionalNumber('moneyIncome'),
+        payday: Math.round(optionalNumber('moneyPayday')),
+        essentials: optionalNumber('moneyEssentials'),
+        buffer: optionalNumber('moneyBuffer')
+    };
+
+    const balance = balanceText === '' ? null : Number(balanceText);
+
+    if (Object.values(values).some(n => !Number.isFinite(n) || n < 0 || n > 1000000000) ||
+        (balance !== null && (!Number.isFinite(balance) || balance < 0 || balance > 1000000000))) {
+
+        showToast('Enter amounts of ₹0 or more.');
+        return;
+    }
+
+    if (values.payday > 31) {
+        showToast('The income day must be a day of the month from 1 to 31.');
+        return;
+    }
+
+    const shown = overview && overview.money && overview.money.balanceKnown ? Number(overview.money.balance) : null;
+
+    Object.assign(records.profile, values);
+
+    if (balance === null) {
+        delete records.profile.balance;
+        delete records.profile.balanceAt;
+
+    } else if (balance !== shown || records.profile.balance === undefined) {
+        /* A new balance starts counting from now: later payments and expenses move it. */
+
+        records.profile.balance = balance;
+        records.profile.balanceAt = Date.now();
+    }
+
+    saveRecords();
+
+    showToast('Saved. The Guardian now uses these figures.');
+});
+
+/* ==============================
    HOME TILES AND REDRAW
 ================================ */
 
 function updateTiles() {
-    const emi = nextEmi();
-
-    $('tileLoans').textContent = emi
-        ? emi.name + ' • ' + money(emi.amount) + ' due ' + displayDate(emi.due)
-        : 'Add an EMI to get reminders.';
-
-    const goal = records.goals
-        .filter(item => item.saved < item.target)
-        .sort((a, b) => (b.saved / b.target) - (a.saved / a.target))[0];
-
-    $('tileGoals').textContent = goal
-        ? goal.name + ' is ' + Math.round(goal.saved / goal.target * 100) + '% complete'
-        : (records.goals.length ? 'All your goals are reached 🎉' : 'Create a goal and track it.');
-
     $('tileForecast').textContent = forecast
         ? forecastText(forecast).split('. ')[0].replace(/\.$/, '') + '.'
         : 'See where this month is heading.';
@@ -3017,6 +3944,7 @@ function renderAll() {
     renderWeekBars();
     renderFraud();
     updateTiles();
+    renderNotifySettings();
 
     if (currentView === 'paymentView' && !$('receivePanel').classList.contains('hidden')) {
         renderReceived();
@@ -3257,32 +4185,7 @@ const PAYOUT_LABELS = {
     NONE: '—'
 };
 
-function sysLine(label, ok, text) {
-    const line = makeElement('div', 'sys-line');
-
-    const left = makeElement('span');
-
-    left.appendChild(makeElement('span', ok ? 'dot-ok' : 'dot-off'));
-    left.appendChild(document.createTextNode(label));
-
-    line.appendChild(left);
-    line.appendChild(makeElement('span', 'muted', text));
-
-    return line;
-}
-
 function renderPaypalSystem() {
-    const box = $('paypalSystem');
-
-    box.replaceChildren(
-        sysLine('PayPal Sandbox', payConfig.paypalConfigured,
-            payConfig.paypalConfigured ? 'Connected (test money only)' : 'Not configured on the server'),
-        sysLine('Webhooks', payConfig.webhookConfigured,
-            payConfig.webhookConfigured ? 'Verified events' : 'Not configured (PAYPAL_WEBHOOK_ID)'),
-        sysLine('Your PayPal email', !!me.paypalEmail,
-            me.paypalEmail || 'Not added: you cannot be paid out yet')
-    );
-
     if (document.activeElement !== $('paypalEmailInput')) {
         $('paypalEmailInput').value = me.paypalEmail || '';
     }
@@ -3633,7 +4536,7 @@ async function undoHomePaid(row) {
 }
 
 async function deleteHomeExpense(expense) {
-    if (!window.confirm('Delete "' + expense.name + '" and its history?')) {
+    if (!await askConfirm('Delete "' + expense.name + '" and its history?', 'Delete')) {
         return;
     }
 
@@ -3690,7 +4593,7 @@ $('homeForm').addEventListener('submit', async function(event) {
 
         $('homeStart').value = today();
 
-        $('homeAddFold').open = false;
+        showSubtab('ghome', 'todo');
 
         showToast('Expense saved. You will be reminded before it is due.');
 
@@ -3711,6 +4614,738 @@ $('homePrevMonth').addEventListener('click', () => {
 $('homeNextMonth').addEventListener('click', () => {
     homeMonth = shiftMonth(homeMonth || thisMonth(), 1);
     loadHome();
+});
+
+/* ==============================
+   HE: HOME EXPENSES
+   Kept apart from Pay: three payment options (Daily, Monthly, Yearly), five payment
+   methods, their own reminders and their own transaction history.
+
+   Scan & Pay and Mobile Number are paid through PayPal and are only ever shown as
+   successful when PayPal confirms them. Cash and Bank Transfer are recorded, not sent.
+================================ */
+
+const HE_TYPES = { DAILY: 'Daily', MONTHLY: 'Monthly', YEARLY: 'Yearly' };
+
+const HE_METHODS = {
+    SCAN: 'Scan & Pay',
+    MYQR: 'My Payment QR',
+    MOBILE: 'Mobile number',
+    BANK: 'Bank transfer',
+    CASH: 'Cash'
+};
+
+/* What the server's verified status is called on screen, and its colour. */
+
+const HE_STATUS = {
+    PAID: ['Successful', 'completed'],
+    COMPLETED: ['Successful', 'completed'],
+    CREATED: ['Pending', 'pending'],
+    AWAITING_APPROVAL: ['Pending', 'pending'],
+    FAILED: ['Failed', 'failed'],
+    CANCELLED: ['Cancelled', 'cancelled']
+};
+
+/* Used until the server says what each method really does with its payment provider. */
+
+const HE_DEFAULT_HOW = {
+    SCAN: 'Scan a Monetra or UPI QR code. You approve the payment on PayPal.',
+    MYQR: 'Your own Monetra QR code. Anyone can scan it to pay you.',
+    MOBILE: 'Pay by mobile number. The name is shown before you pay, and you approve the payment on PayPal.',
+    BANK: 'Make the transfer in your bank\'s app, then record it here. Monetra does not start bank transfers.',
+    CASH: 'Record a home expense you paid in cash. No money is moved.'
+};
+
+let heMethod = 'MOBILE';
+let heMethodInfo = {};          /* id -> { available, how } from the server */
+let hePayee = null;             /* who a Scan or Mobile payment goes to, once looked up */
+let heScannedName = '';
+let heScanned = false;
+let heLookupRun = 0;
+let heLookupTimer = null;
+let heBusy = false;             /* one payment at a time, however often Pay Now is pressed */
+let heOpenRow = '';             /* the history row whose details are open */
+let heDrafts = {};              /* what is typed into each option's form: Daily, Monthly and Yearly keep their own */
+
+const HE_DRAFT_FIELDS = ['heAmount', 'heNote', 'hePhone', 'heBankType', 'heBankName', 'heBankLast4', 'heBankRef', 'heCashTo'];
+
+function isHePaypal(method) {
+    return method === 'SCAN' || method === 'MOBILE';
+}
+
+async function loadHeMethods() {
+    try {
+        const data = await apiJson('/api/he/methods', {}, 10000);
+
+        heMethodInfo = {};
+
+        safeArray(data.methods).forEach(m => {
+            heMethodInfo[m.id] = m;
+        });
+
+    } catch (error) {
+        /* The built-in descriptions are shown instead. */
+    }
+
+    renderHeForm();
+}
+
+function keepHeDraft() {
+    const draftNow = { method: heMethod };
+
+    HE_DRAFT_FIELDS.forEach(id => {
+        draftNow[id] = $(id).value;
+    });
+
+    heDrafts[heType] = draftNow;
+}
+
+/* Shows the fields the chosen method needs, and nothing else. */
+
+function renderHeForm() {
+    document.querySelectorAll('#heTabs button').forEach(button => {
+        button.classList.toggle('active', button.dataset.he === heType);
+    });
+
+    $('heFormTitle').textContent = HE_TYPES[heType] + ' HE Payment';
+
+    document.querySelectorAll('#heMethods button').forEach(button => {
+        const info = heMethodInfo[button.dataset.method];
+
+        button.classList.toggle('active', button.dataset.method === heMethod);
+        button.disabled = !!info && info.available === false;
+    });
+
+    const info = heMethodInfo[heMethod];
+
+    $('heMethodHint').textContent = info && info.how ? info.how : HE_DEFAULT_HOW[heMethod];
+
+    const paypal = isHePaypal(heMethod);
+
+    $('heScanBox').classList.toggle('hidden', heMethod !== 'SCAN');
+    $('heQrBox').classList.toggle('hidden', heMethod !== 'MYQR');
+    $('hePayeeBox').classList.toggle('hidden', !(heMethod === 'MOBILE' || (heMethod === 'SCAN' && heScanned)));
+    $('heBankBox').classList.toggle('hidden', heMethod !== 'BANK');
+    $('heCashBox').classList.toggle('hidden', heMethod !== 'CASH');
+    $('heAmountRow').classList.toggle('hidden', heMethod === 'MYQR');
+
+    const button = $('hePay');
+
+    button.classList.toggle('hidden', heMethod === 'MYQR');
+    button.textContent = paypal ? 'Pay Now' : 'Record Payment';
+    button.disabled = heBusy || (!!info && info.available === false);
+
+    if (heMethod === 'SCAN' && !$('heScanMessage').textContent) {
+        $('heScanMessage').textContent = 'Point the camera at a Monetra or UPI QR code. The name is detected for you.';
+    }
+
+    if (heMethod === 'MYQR') {
+        loadHeQr();
+    }
+}
+
+function setHeMethod(method) {
+    if (!HE_METHODS[method]) {
+        return;
+    }
+
+    if (method !== 'SCAN') {
+        stopScan();
+    }
+
+    heMethod = method;
+
+    $('heMessage').textContent = '';
+    $('heContactList').classList.add('hidden');
+
+    renderHeForm();
+}
+
+document.querySelectorAll('#heMethods button').forEach(button => {
+    button.addEventListener('click', () => setHeMethod(button.dataset.method));
+});
+
+function showHeType(type) {
+    keepHeDraft();
+
+    stopScan();
+
+    heType = HE_TYPES[type] ? type : 'DAILY';
+
+    const saved = heDrafts[heType] || {};
+
+    HE_DRAFT_FIELDS.forEach(id => {
+        $(id).value = saved[id] || (id === 'heBankType' ? 'IMPS' : '');
+    });
+
+    heMethod = saved.method || 'MOBILE';
+    hePayee = null;
+    heScanned = false;
+    heScannedName = '';
+
+    $('heMessage').textContent = '';
+    $('heScanMessage').textContent = '';
+    $('heRecipientCard').classList.add('hidden');
+
+    renderHeForm();
+
+    if (heMethod === 'MOBILE' && phoneKeyFrom($('hePhone').value)) {
+        lookupHeRecipient();
+    }
+}
+
+document.querySelectorAll('#heTabs button').forEach(button => {
+    button.addEventListener('click', () => showHeType(button.dataset.he));
+});
+
+/* My Payment QR: the user's own Monetra QR code, drawn by the server. */
+
+async function loadHeQr() {
+    $('heMyPhone').textContent = me.phone ? '+91 ' + me.phone : '';
+
+    try {
+        const response = await fetch('/api/qr/me', { cache: 'no-store' });
+
+        if (!response.ok) {
+            throw new Error('QR not available');
+        }
+
+        $('heMyQr').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(await response.text());
+
+    } catch (error) {
+        $('heMyQr').removeAttribute('src');
+        $('heMyPhone').textContent = 'Could not draw your QR code right now.';
+    }
+}
+
+/* ---------- who is being paid (Scan & Pay, Mobile Number) ---------- */
+
+/* What is wrong with a typed mobile number, or '' when it is fine. A country code is allowed. */
+
+function mobileProblem(text) {
+    const typed = String(text || '').trim();
+    const digits = typed.replace(/\D/g, '');
+
+    if (!digits) {
+        return 'Enter the mobile number you are paying, for example +91 98765 43210.';
+    }
+
+    if (/[a-z]/i.test(typed)) {
+        return 'Pick a contact from the list, or enter a mobile number.';
+    }
+
+    let local = digits;
+
+    if (digits.length === 12 && digits.startsWith('91')) {
+        local = digits.slice(2);
+
+    } else if (digits.length === 11 && digits.startsWith('0')) {
+        local = digits.slice(1);
+
+    } else if (typed.startsWith('+') && !digits.startsWith('91')) {
+        return 'Only Indian mobile numbers (+91) can be paid from Monetra.';
+    }
+
+    if (local.length !== 10) {
+        return 'A mobile number has 10 digits, with or without +91 in front.';
+    }
+
+    if (!/^[6-9]/.test(local)) {
+        return 'That does not look like an Indian mobile number: they start with 6, 7, 8 or 9.';
+    }
+
+    return '';
+}
+
+async function lookupHeRecipient() {
+    const key = phoneKeyFrom($('hePhone').value);
+
+    hePayee = null;
+
+    if (!key || mobileProblem($('hePhone').value)) {
+        $('heRecipientCard').classList.add('hidden');
+        return null;
+    }
+
+    const run = ++heLookupRun;
+
+    renderRecipientCard(null, 'Looking up ' + key.slice(0, 2) + 'xxxxxx' + key.slice(8) + '...', 'wait', 'heRecipientCard');
+
+    try {
+        const info = await apiJson('/api/payments/recipient?phone=' + key, {}, 10000);
+
+        if (run !== heLookupRun) {
+            return null;
+        }
+
+        hePayee = { key, ...info };
+
+        if (info.self) {
+            renderRecipientCard(null, 'This is your own number. Enter someone else\'s.', 'warn', 'heRecipientCard');
+
+        } else if (info.onMonetra) {
+            renderRecipientCard(info, 'On Monetra ✓ • ' + info.maskedPhone, 'found', 'heRecipientCard');
+
+        } else {
+            /* The same as on the Pay screen: a number that is not on Monetra can still be paid through PayPal. */
+
+            renderRecipientCard({ name: heScannedName || info.name },
+                'Not on Monetra yet • ' + info.maskedPhone + ' • you can still pay through PayPal', 'new', 'heRecipientCard');
+        }
+
+        return hePayee;
+
+    } catch (error) {
+        if (run === heLookupRun) {
+            renderRecipientCard(null, error.message, 'warn', 'heRecipientCard');
+        }
+
+        return null;
+    }
+}
+
+$('hePhone').addEventListener('input', function() {
+    heScannedName = '';
+
+    suggestContacts(CONTACT_BOXES.he);
+
+    clearTimeout(heLookupTimer);
+
+    if (contactQuery(CONTACT_BOXES.he).complete) {
+        heLookupTimer = setTimeout(lookupHeRecipient, 350);
+
+    } else {
+        hePayee = null;
+
+        $('heRecipientCard').classList.add('hidden');
+    }
+});
+
+function pickHeContact(contact) {
+    $('heContactList').classList.add('hidden');
+
+    $('hePhone').value = contact.phone;
+
+    heScannedName = '';
+
+    lookupHeRecipient();
+
+    $('heAmount').focus();
+}
+
+/* A QR code was read: fill in who it belongs to, then the user enters the amount. */
+
+function applyHeScan(payeeInfo) {
+    if (!payeeInfo.phone) {
+        $('heScanMessage').textContent =
+            'That QR code has no mobile number in it. Try another code, or use Mobile Number.';
+        return false;
+    }
+
+    heScannedName = payeeInfo.name || '';
+    heScanned = true;
+
+    $('hePhone').value = payeeInfo.phone;
+
+    $('heScanMessage').textContent = 'QR code read ✓ Check the name below, then enter the amount.';
+
+    renderHeForm();
+
+    lookupHeRecipient();
+
+    $('heAmount').focus();
+
+    return true;
+}
+
+/* Bank Transfer: only the last four digits of an account are ever typed or kept. */
+
+$('heBankLast4').addEventListener('input', function() {
+    this.value = this.value.replace(/\D/g, '').slice(0, 4);
+});
+
+/* ---------- reminders ---------- */
+
+function renderHeReminders() {
+    const r = records.he.reminders || {};
+
+    const daily = r.daily || {};
+    const monthly = r.monthly || {};
+    const yearly = r.yearly || {};
+
+    $('heRemDailyOn').checked = !!daily.on;
+    $('heRemDailyTime').value = daily.time || '09:00';
+
+    $('heRemMonthlyOn').checked = !!monthly.on;
+    $('heRemMonthlyDay').value = monthly.day || 1;
+    $('heRemMonthlyTime').value = monthly.time || '09:00';
+
+    $('heRemYearlyOn').checked = !!yearly.on;
+    $('heRemYearlyDate').value = yearly.date || '';
+    $('heRemYearlyTime').value = yearly.time || '09:00';
+}
+
+function renderHe() {
+    renderHeForm();
+    renderHeReminders();
+    renderHeHistory();
+}
+
+/* ---------- history ---------- */
+
+function heDetailLine(label, value) {
+    const line = makeElement('div', 'detail-line');
+
+    line.appendChild(makeElement('span', '', label));
+    line.appendChild(makeElement('strong', '', value));
+
+    return line;
+}
+
+function renderHeHistory() {
+    renderRecords('heHistory', heHistory, 'No home expense payments yet. Pay one and it appears here.', p => {
+        const status = HE_STATUS[p.status] || [STATUS_LABELS[p.status] || p.status, String(p.status).toLowerCase()];
+        const open = heOpenRow === p.id;
+
+        const row = makeElement('div', 'record-item he-row');
+
+        const main = makeElement('button', 'he-row-main');
+
+        main.type = 'button';
+        main.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+        const left = makeElement('span');
+
+        left.appendChild(makeElement('strong', '', money(p.amountInr) + (p.recipient ? ' to ' + p.recipient : '')));
+
+        left.appendChild(makeElement('small', '',
+            displayDateTime(p.createdAt) + ' • ' + (HE_METHODS[p.method] || p.method) + ' • ' + (HE_TYPES[p.type] || p.type) + ' HE'));
+
+        left.appendChild(makeElement('small', '', 'ID ' + p.transactionId));
+
+        main.appendChild(left);
+        main.appendChild(makeElement('span', 'badge ' + status[1], status[0]));
+
+        main.addEventListener('click', () => {
+            heOpenRow = open ? '' : p.id;
+
+            renderHeHistory();
+        });
+
+        row.appendChild(main);
+
+        if (open) {
+            const details = makeElement('div', 'he-details');
+
+            details.appendChild(heDetailLine('Status', status[0] + (p.source === 'PAYPAL'
+                ? (p.status === 'COMPLETED' ? ' (confirmed by PayPal)' : '')
+                : ' (recorded by you, no money moved by Monetra)')));
+
+            details.appendChild(heDetailLine('Amount', money(p.amountInr) + (p.amountUsd ? ' (' + usd(p.amountUsd) + ' on PayPal)' : '')));
+            details.appendChild(heDetailLine('Paid to', p.recipient || 'Not given'));
+            details.appendChild(heDetailLine('Payment method', (HE_METHODS[p.method] || p.method) + (p.detail ? ' • ' + p.detail : '')));
+            details.appendChild(heDetailLine('Home expense', (HE_TYPES[p.type] || p.type) + (p.description ? ' • ' + p.description : '')));
+            details.appendChild(heDetailLine('Date', displayDateTime(p.createdAt)));
+            details.appendChild(heDetailLine('Transaction ID', p.transactionId));
+
+            if (p.orderId) {
+                details.appendChild(heDetailLine('PayPal order', p.orderId));
+            }
+
+            if (p.reference) {
+                details.appendChild(heDetailLine('Bank reference', p.reference));
+            }
+
+            if (p.message) {
+                details.appendChild(heDetailLine('Note', p.message));
+            }
+
+            if (p.source === 'PAYPAL' && (p.status === 'AWAITING_APPROVAL' || (p.status === 'FAILED' && p.orderId))) {
+                const retry = makeElement('button', 'small-button', 'Check with PayPal');
+
+                retry.type = 'button';
+
+                retry.addEventListener('click', () => recoverPayment(p.paymentId, retry));
+
+                details.appendChild(retry);
+            }
+
+            row.appendChild(details);
+        }
+
+        return row;
+    });
+}
+
+async function loadHe() {
+    if (!me.email) {
+        return;
+    }
+
+    try {
+        heHistory = safeArray(await apiJson('/api/he/history', {}, 15000));
+
+    } catch (error) {
+        return;
+    }
+
+    syncHeIntoRecords();
+
+    if (currentView === 'heView') {
+        renderHeHistory();
+    }
+}
+
+/* A paid home expense is spending too: it becomes an expense exactly once, so limits and balance see it. */
+
+function syncHeIntoRecords() {
+    let changed = false;
+
+    heHistory.forEach(p => {
+        if (p.status !== 'PAID' && p.status !== 'COMPLETED') {
+            return;
+        }
+
+        const ref = 'he:' + p.id;
+
+        if (records.expenses.some(item => item.ref === ref)) {
+            return;
+        }
+
+        records.expenses.unshift({
+            id: new Date(p.createdAt).getTime(),
+            name: 'Home: ' + (p.description || HE_TYPES[p.type] + ' home expense'),
+            amount: Number(p.amountInr),
+            date: dateKey(new Date(p.createdAt)),
+            source: 'he',
+            ref
+        });
+
+        changed = true;
+    });
+
+    if (changed) {
+        saveRecords();
+
+        renderAll();
+    }
+}
+
+$('heRefresh').addEventListener('click', loadHe);
+
+/* ---------- Pay Now ---------- */
+
+/* Cash and Bank Transfer: nothing is sent. It is recorded once the user confirms they really paid. */
+
+async function recordHePayment(amount, description, label) {
+    const body = { type: heType, amountInr: amount, description, method: heMethod, confirmed: true };
+
+    let question;
+
+    if (heMethod === 'CASH') {
+        body.recipient = $('heCashTo').value.trim();
+
+        question = 'Did you pay ' + money(amount) + ' in cash' + (body.recipient ? ' to ' + body.recipient : '') + '?\n\n' +
+            'Monetra will mark this ' + label.toLowerCase() + ' as paid. No money is moved.';
+
+    } else {
+        body.recipient = $('heBankName').value.trim();
+        body.transferType = $('heBankType').value;
+        body.accountLast4 = $('heBankLast4').value.trim();
+        body.reference = $('heBankRef').value.trim();
+
+        if (!body.recipient) {
+            throw new Error('Enter who you paid.');
+        }
+
+        if (body.accountLast4 && !/^[0-9]{4}$/.test(body.accountLast4)) {
+            throw new Error('Enter only the last 4 digits of the account number, or leave it empty.');
+        }
+
+        question = 'Have you already sent ' + money(amount) + ' to ' + body.recipient + ' by ' + body.transferType +
+            ' from your bank\'s app?\n\nMonetra does not make bank transfers. It only records this one as paid.';
+    }
+
+    if (!await askConfirm(question, 'Yes, record it', 'No')) {
+        return 'Nothing was recorded.';
+    }
+
+    body.requestId = 'he-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+
+    await postJson('/api/he/pay', body, 15000);
+
+    ['heAmount', 'heNote', 'heBankName', 'heBankLast4', 'heBankRef', 'heCashTo'].forEach(id => {
+        $(id).value = '';
+    });
+
+    showPaymentResult('✅ ' + label + ' of ' + money(amount) + ' recorded as paid (' + HE_METHODS[heMethod].toLowerCase() +
+        '). Monetra moved no money.', 'good-box', 'heResult');
+
+    await loadHe();
+
+    return '';
+}
+
+/* Scan & Pay and Mobile Number: the Guardian and Fraud Guard check it, then PayPal's own page takes over. */
+
+async function startHePaypalPayment(amount, description, label) {
+    const problem = mobileProblem($('hePhone').value);
+
+    if (heMethod === 'SCAN' && !heScanned) {
+        throw new Error('Scan a QR code first, or choose its picture.');
+    }
+
+    if (problem) {
+        throw new Error(problem);
+    }
+
+    if (amount > MAX_PAYMENT_INR) {
+        throw new Error('A payment through PayPal can be at most ' + money(MAX_PAYMENT_INR) + '.');
+    }
+
+    const key = phoneKeyFrom($('hePhone').value);
+
+    const to = hePayee && hePayee.key === key ? hePayee : await lookupHeRecipient();
+
+    if (!to) {
+        throw new Error('Monetra could not look up that number just now. Try again.');
+    }
+
+    if (to.self) {
+        throw new Error('This is your own number. Enter someone else\'s.');
+    }
+
+    const payload = {
+        method: heMethod === 'SCAN' ? 'QR' : 'PHONE',
+        recipientPhone: key,
+        scannedName: heMethod === 'SCAN' ? heScannedName : '',
+        amountInr: amount,
+        description: description || label,
+        heType,
+        heMethod
+    };
+
+    $('heMessage').textContent = 'Checking with the Guardian...';
+
+    const [check, risk] = await Promise.all([
+        postJson('/api/guardian/check', payload, 15000),
+        postJson('/api/payments/risk', payload, 15000)
+    ]);
+
+    const warnings = safeArray(check.guardian && check.guardian.cards)
+        .filter(card => card.title !== 'YOUR DECISION')
+        .map(card => '• ' + card.title + ': ' + card.text);
+
+    safeArray(risk.flags).forEach(flag => warnings.push('• FRAUD GUARD: ' + flag));
+
+    const question = (warnings.length ? 'GUARDIAN AI — PAYMENT ALERT\n\n' + warnings.join('\n\n') + '\n\n' : '') +
+        'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings.length ? ' anyway?' : '?') +
+        '\n\nNothing is charged until you approve it on PayPal and Monetra\'s server confirms it.';
+
+    if (!await askConfirm(question, 'Continue to PayPal', 'Go Back')) {
+        return 'Payment not started.';
+    }
+
+    $('heMessage').textContent = 'Creating your PayPal Sandbox order...';
+
+    const order = await postJson('/api/payments/create-order', { ...payload, confirmRisk: !!risk.flagged }, 30000);
+
+    $('heMessage').textContent = 'Opening PayPal...';
+
+    goToPaypal(order.approvalUrl);
+
+    return 'Opening PayPal...';
+}
+
+$('heForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+
+    /* Pressing Pay Now again while a payment is being made does nothing. */
+
+    if (heBusy || heMethod === 'MYQR') {
+        return;
+    }
+
+    const message = $('heMessage');
+
+    const amount = Math.round(Number($('heAmount').value) * 100) / 100;
+    const description = $('heNote').value.trim();
+    const label = HE_TYPES[heType] + ' home expense';
+
+    message.textContent = '';
+
+    $('heResult').classList.add('hidden');
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+        message.textContent = 'Enter the amount you are paying.';
+        return;
+    }
+
+    heBusy = true;
+
+    $('hePay').disabled = true;
+
+    try {
+        message.textContent = isHePaypal(heMethod)
+            ? await startHePaypalPayment(amount, description, label)
+            : await recordHePayment(amount, description, label);
+
+    } catch (error) {
+        message.textContent = error.message;
+
+    } finally {
+        heBusy = false;
+
+        renderHeForm();
+    }
+});
+
+$('heReminderForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    const day = Math.round(Number($('heRemMonthlyDay').value));
+
+    if ($('heRemMonthlyOn').checked && !(day >= 1 && day <= 31)) {
+        showToast('Choose a day of the month from 1 to 31 for the monthly reminder.');
+        return;
+    }
+
+    if ($('heRemYearlyOn').checked && !$('heRemYearlyDate').value) {
+        showToast('Choose the date for the yearly reminder.');
+        return;
+    }
+
+    records.he.reminders = {
+        daily: { on: $('heRemDailyOn').checked, time: $('heRemDailyTime').value || '09:00' },
+        monthly: { on: $('heRemMonthlyOn').checked, day: day >= 1 && day <= 31 ? day : 1, time: $('heRemMonthlyTime').value || '09:00' },
+        yearly: { on: $('heRemYearlyOn').checked, date: $('heRemYearlyDate').value, time: $('heRemYearlyTime').value || '09:00' }
+    };
+
+    saveRecords();
+
+    showToast('HE reminders saved.');
+});
+
+/* ==============================
+   GUARDIAN NOTIFICATION CHOICES
+================================ */
+
+function renderNotifySettings() {
+    const choices = records.profile.notify || {};
+
+    $('notifyDaily').checked = choices.daily !== false;
+    $('notifyLoans').checked = choices.loans !== false;
+    $('notifySavings').checked = choices.savings !== false;
+}
+
+['Daily', 'Loans', 'Savings'].forEach(name => {
+    $('notify' + name).addEventListener('change', function() {
+        records.profile.notify[name.toLowerCase()] = this.checked;
+
+        saveRecords();
+
+        showToast(name + ' notifications are ' + (this.checked ? 'on.' : 'off.'));
+    });
 });
 
 /* ==============================

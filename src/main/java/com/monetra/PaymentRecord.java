@@ -93,6 +93,17 @@ public class PaymentRecord {
     @Column(length = 10)
     public String homeDueDate;
 
+    /**
+     * DAILY, MONTHLY or YEARLY when this is a home expense (HE) payment. HE payments have their own
+     * history and are left out of the ordinary payments list. Empty for an ordinary payment.
+     */
+    @Column(length = 8)
+    public String heType;
+
+    /** How an HE payment was made: SCAN or MOBILE. Both are paid through PayPal. */
+    @Column(length = 8)
+    public String heMethod;
+
     @Column(precision = 14, scale = 2)
     public BigDecimal amountInr;
 

@@ -39,6 +39,7 @@
         <symbol id="i-family" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5.2a3.2 3.2 0 0 1 0 5.8M18.5 14.4c2 .7 3 2.5 3 5.6"/></symbol>
         <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
         <symbol id="i-robot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16.5h5"/></symbol>
+        <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></symbol>
     </defs>
 </svg>
 
@@ -152,6 +153,12 @@
                 <span class="guardian-label"><span class="gl-brand">Monetra </span>Guardian</span>
                 <span class="badge-dot hidden" id="guardianBadge">0</span>
             </button>
+
+            <button type="button" class="guardian-btn he-btn" id="heButton" aria-label="Open HE, home expenses"
+                    title="HE: home expenses" onclick="navigateTo('heView')">
+                <svg class="i"><use href="#i-home"/></svg>
+                <span>HE</span>
+            </button>
         </div>
 
         <div class="topbar-right">
@@ -175,6 +182,13 @@
 
         <section class="view-section active" id="homeView">
 
+            <div class="subtabs" data-group="home" role="tablist">
+                <button type="button" data-tab="overview" class="active">Overview</button>
+                <button type="button" data-tab="activity">Recent activity</button>
+            </div>
+
+            <div class="tab-panel" data-group="home" data-tab="overview">
+
             <div class="card hero-card">
                 <div class="hero-top">
                     <span class="logo-circle"><svg class="i"><use href="#i-send"/></svg></span>
@@ -191,19 +205,40 @@
                 </button>
             </div>
 
+            <!-- the three financial awareness cards: each opens its own page -->
+
+            <div class="aware-grid">
+
+                <button type="button" class="aware-card" id="awareDaily" onclick="navigateTo('spendingView')">
+                    <span class="aware-head">
+                        <span class="aware-title"><svg class="i"><use href="#i-wallet"/></svg>Daily Budget</span>
+                        <span class="risk-chip" id="awareDailyChip">No limit set</span>
+                    </span>
+                    <span class="aware-main" id="awareDailyMain">Set a daily limit to see what is left today.</span>
+                    <span class="aware-sub" id="awareDailySub"></span>
+                </button>
+
+                <button type="button" class="aware-card" id="awareLoans" onclick="navigateTo('loanView')">
+                    <span class="aware-head">
+                        <span class="aware-title"><svg class="i"><use href="#i-bank"/></svg>Loan Guardian</span>
+                        <span class="risk-chip" id="awareLoansChip">No loans</span>
+                    </span>
+                    <span class="aware-main" id="awareLoansMain">Add a loan to see your EMIs and reminders.</span>
+                    <span class="aware-sub" id="awareLoansSub"></span>
+                </button>
+
+                <button type="button" class="aware-card" id="awareGoals" onclick="navigateTo('goalView')">
+                    <span class="aware-head">
+                        <span class="aware-title"><svg class="i"><use href="#i-target"/></svg>Savings Goals</span>
+                        <span class="risk-chip" id="awareGoalsChip">No goal</span>
+                    </span>
+                    <span class="aware-main" id="awareGoalsMain">Create a goal and track it.</span>
+                    <span class="aware-sub" id="awareGoalsSub"></span>
+                </button>
+
+            </div>
+
             <div class="tile-grid">
-
-                <button type="button" class="tile" onclick="navigateTo('loanView')">
-                    <span class="tile-icon"><svg class="i"><use href="#i-bank"/></svg></span>
-                    <strong>Loans &amp; EMI Tracker</strong>
-                    <span class="sub" id="tileLoans">Add an EMI to get reminders.</span>
-                </button>
-
-                <button type="button" class="tile" onclick="navigateTo('goalView')">
-                    <span class="tile-icon"><svg class="i"><use href="#i-target"/></svg></span>
-                    <strong>Savings Goals</strong>
-                    <span class="sub" id="tileGoals">Create a goal and track it.</span>
-                </button>
 
                 <button type="button" class="tile" onclick="navigateTo('forecastView')">
                     <span class="tile-icon"><svg class="i"><use href="#i-trend"/></svg></span>
@@ -219,6 +254,10 @@
 
             </div>
 
+            </div>
+
+            <div class="tab-panel hidden" data-group="home" data-tab="activity">
+
             <div class="card">
                 <div class="card-head">
                     <h2>Recent Activity</h2>
@@ -226,6 +265,8 @@
                 </div>
 
                 <div id="homeActivity" class="record-list"></div>
+            </div>
+
             </div>
 
         </section>
@@ -250,7 +291,7 @@
 
             <!-- SEND -->
 
-            <div id="sendPanel">
+            <div id="sendPanel" class="tab-panel">
 
                 <form id="paymentForm" class="card" autocomplete="off">
 
@@ -270,21 +311,17 @@
 
                     <div id="phoneBox">
 
+                        <!-- one box, like a phone's dialler: type a name or a number and your contacts appear -->
+
                         <div class="field" id="contactField">
                             <svg class="i"><use href="#i-search"/></svg>
-                            <input id="contactSearch" type="text" maxlength="40" autocomplete="off"
-                                   placeholder="Search contacts by name or number" aria-label="Search contacts">
+                            <input id="payPhone" type="text" maxlength="40" autocomplete="off"
+                                   placeholder="Name or mobile number" aria-label="Recipient name or mobile number">
                         </div>
 
                         <div id="contactList" class="contact-list hidden" role="listbox" aria-label="Contacts"></div>
 
                         <input id="contactsFile" type="file" accept=".vcf,text/vcard,text/x-vcard" class="hidden" aria-hidden="true" tabindex="-1">
-
-                        <div class="field has-prefix wide">
-                            <span class="prefix">+91</span>
-                            <input id="payPhone" type="tel" inputmode="numeric" maxlength="14"
-                                   placeholder="Enter mobile number" aria-label="Recipient mobile number">
-                        </div>
 
                         <div id="recipientCard" class="recipient-card hidden" aria-live="polite"></div>
 
@@ -380,22 +417,27 @@
 
                     <div id="reviewSummary" class="stat-grid two"></div>
 
+                    <!-- Guardian AI: risk in each area, then one red box per warning that applies -->
+
+                    <div id="reviewGuardian" class="guardian-alert" aria-live="polite"></div>
+
                     <div id="reviewRules" class="review-notes"></div>
 
                     <div id="reviewFraud" class="review-notes"></div>
 
                     <div id="reviewAi" class="review-notes"></div>
 
-                    <p class="footer-note">
-                        The Guardian advises, you decide. Nothing is charged until you approve the payment
-                        on PayPal and Monetra's server confirms it.
+                    <p class="guardian-disclaimer">
+                        ⚠️ Nothing is charged until you approve the payment through PayPal and Monetra's server confirms it.
                     </p>
 
                     <div class="review-actions">
                         <div id="reviewMessage" class="message" role="status" aria-live="polite"></div>
 
-                        <div class="button-row">
+                        <div class="button-row four">
                             <button type="button" id="editPayment">Go Back</button>
+                            <button type="button" id="adjustAmount">Adjust Amount</button>
+                            <button type="button" id="reviewBudget">Review Budget</button>
                             <button type="button" id="continuePaypal">Continue to PayPal</button>
                         </div>
                     </div>
@@ -410,7 +452,7 @@
 
             <!-- RECEIVE -->
 
-            <div id="receivePanel" class="hidden">
+            <div id="receivePanel" class="tab-panel hidden">
 
                 <div class="card centered">
                     <h2 style="justify-content:center">Your Monetra QR</h2>
@@ -442,6 +484,15 @@
                     <p>Set your daily, weekly, monthly or yearly limit and keep your expenses in control.</p>
                 </div>
             </div>
+
+            <div class="subtabs" data-group="spending" role="tablist">
+                <button type="button" data-tab="limits" class="active">Limits</button>
+                <button type="button" data-tab="money">My money</button>
+                <button type="button" data-tab="week">Last 7 days</button>
+                <button type="button" data-tab="add">Add expense</button>
+            </div>
+
+            <div class="tab-panel" data-group="spending" data-tab="limits">
 
             <div class="period-tabs" id="periodTabs" role="tablist">
                 <button type="button" data-period="daily" class="active"><svg class="i"><use href="#i-cal"/></svg>Daily</button>
@@ -477,27 +528,83 @@
 
             </form>
 
+            </div>
+
+            <div class="tab-panel hidden" data-group="spending" data-tab="money">
+
+            <form id="moneyForm" class="card">
+
+                <div class="card-head">
+                    <h2><svg class="i"><use href="#i-shield"/></svg>My money</h2>
+                    <span class="pill-count" id="moneyNow">Not set</span>
+                </div>
+
+                <p class="card-sub">The Guardian uses these to check your EMIs, bills and savings goals before you pay.
+                    Leave empty anything you do not know.</p>
+
+                <div class="two-col">
+                    <div>
+                        <label for="moneyBalance">Available balance now (₹)</label>
+                        <input id="moneyBalance" type="number" min="0" max="1000000000" step="0.01" placeholder="e.g. 25000">
+                    </div>
+                    <div>
+                        <label for="moneyIncome">Monthly income (₹)</label>
+                        <input id="moneyIncome" type="number" min="0" max="1000000000" step="0.01" placeholder="e.g. 20000">
+                    </div>
+                    <div>
+                        <label for="moneyPayday">Income arrives on day</label>
+                        <input id="moneyPayday" type="number" min="1" max="31" step="1" placeholder="1 to 31">
+                    </div>
+                    <div>
+                        <label for="moneyEssentials">Essential expenses a month (₹)</label>
+                        <input id="moneyEssentials" type="number" min="0" max="1000000000" step="0.01" placeholder="Food, travel...">
+                    </div>
+                    <div>
+                        <label for="moneyBuffer">Emergency buffer to keep (₹)</label>
+                        <input id="moneyBuffer" type="number" min="0" max="1000000000" step="0.01" placeholder="Optional">
+                    </div>
+                </div>
+
+                <p class="hint">Do not put EMIs or home bills into essential expenses: Monetra counts them on their own,
+                    so nothing is counted twice. Your balance moves by itself with every payment and expense you record.</p>
+
+                <button type="submit" class="btn-gold">Save My Money</button>
+
+            </form>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="spending" data-tab="week">
+
             <div class="card">
                 <h2>Spending, last 7 days</h2>
                 <div id="weekBars" class="bars"></div>
             </div>
 
+            </div>
+
+            <div class="tab-panel hidden" data-group="spending" data-tab="add">
+
             <form id="expenseForm" class="card">
                 <h2>Record an expense</h2>
                 <p class="card-sub">Payments you make with Monetra are added automatically. Use this for cash and other spending.</p>
 
-                <div class="field">
-                    <svg class="i"><use href="#i-wallet"/></svg>
-                    <input id="expenseName" type="text" maxlength="60" placeholder="What was it? (e.g. Lunch)" aria-label="Expense name" required>
-                </div>
+                <div class="pay-row">
+                    <div class="field has-prefix">
+                        <span class="prefix">₹</span>
+                        <input id="expenseAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="Amount" aria-label="Expense amount" required>
+                    </div>
 
-                <div class="field has-prefix">
-                    <span class="prefix">₹</span>
-                    <input id="expenseAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="Amount" aria-label="Expense amount" required>
+                    <div class="field">
+                        <svg class="i"><use href="#i-wallet"/></svg>
+                        <input id="expenseName" type="text" maxlength="60" placeholder="What was it? (e.g. Lunch)" aria-label="Expense name" required>
+                    </div>
                 </div>
 
                 <button type="submit" class="btn-gold">Add Expense</button>
             </form>
+
+            </div>
 
         </section>
 
@@ -510,35 +617,120 @@
                 <p>Keep loan payments and due dates organised.</p>
             </div>
 
-            <form id="loanForm" class="card">
+            <div class="subtabs" data-group="loan" role="tablist">
+                <button type="button" data-tab="guardian" class="active">Guardian</button>
+                <button type="button" data-tab="calendar">EMI calendar</button>
+                <button type="button" data-tab="list">My loans</button>
+                <button type="button" data-tab="add">Add loan</button>
+            </div>
 
-                <h2>Add Loan / EMI</h2>
+            <div class="tab-panel" data-group="loan" data-tab="guardian">
 
-                <label for="loanName">Loan Name</label>
-                <input id="loanName" type="text" maxlength="60" placeholder="e.g. Home Loan, Car Loan" required>
-
-                <label for="loanAmount">EMI Amount (₹)</label>
-                <input id="loanAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="e.g. 2000" required>
-
-                <label for="loanDue">Next Due Date</label>
-                <input id="loanDue" type="date" required>
-
-                <label for="loanNotes">Notes</label>
-                <input id="loanNotes" type="text" maxlength="100" placeholder="Add any notes...">
-
-                <button type="submit" class="btn-gold">Add Loan</button>
-
-            </form>
 
             <div class="card">
                 <div class="card-head">
-                    <h2>Active Loans</h2>
+                    <h2><svg class="i"><use href="#i-shield"/></svg>Loan Guardian</h2>
+                    <span class="risk-chip" id="loanRiskChip">No loans</span>
+                </div>
+
+                <div id="loanDash" class="stat-grid"></div>
+
+                <div id="loanRiskText"></div>
+
+                <h3 class="sub-title">Next month forecast</h3>
+
+                <div id="loanForecast"></div>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="loan" data-tab="calendar">
+
+            <div class="card">
+                <h2>Upcoming EMIs</h2>
+
+                <div id="loanCalendar" class="record-list"></div>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="loan" data-tab="add">
+
+            <form id="loanForm" class="card">
+
+                <h2 id="loanFormTitle">Add Loan / EMI</h2>
+
+                <div class="two-col">
+                    <div>
+                        <label for="loanName">Loan Name</label>
+                        <input id="loanName" type="text" maxlength="60" placeholder="e.g. Home Loan" required>
+                    </div>
+                    <div>
+                        <label for="loanNotes">Notes</label>
+                        <input id="loanNotes" type="text" maxlength="100" placeholder="Optional">
+                    </div>
+                    <div>
+                        <label for="loanAmount">EMI Amount (₹)</label>
+                        <input id="loanAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="e.g. 2000" required>
+                    </div>
+                    <div>
+                        <label for="loanDue">Next EMI Date</label>
+                        <input id="loanDue" type="date" required>
+                    </div>
+                    <div>
+                        <label for="loanOriginal">Original Loan Amount (₹)</label>
+                        <input id="loanOriginal" type="number" min="0" max="1000000000" step="0.01" placeholder="e.g. 200000">
+                    </div>
+                    <div>
+                        <label for="loanOutstanding">Outstanding Balance (₹)</label>
+                        <input id="loanOutstanding" type="number" min="0" max="1000000000" step="0.01" placeholder="e.g. 150000">
+                    </div>
+                    <div>
+                        <label for="loanRate">Interest Rate (% a year)</label>
+                        <input id="loanRate" type="number" min="0" max="100" step="0.01" placeholder="If known">
+                    </div>
+                    <div>
+                        <label for="loanInstallments">Installments Left</label>
+                        <input id="loanInstallments" type="number" min="0" max="1200" step="1" placeholder="If known">
+                    </div>
+                    <div>
+                        <label for="loanFrequency">Payment Frequency</label>
+                        <select id="loanFrequency">
+                            <option value="MONTHLY" selected>Monthly</option>
+                            <option value="WEEKLY">Weekly</option>
+                            <option value="YEARLY">Yearly</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="loanStatus">Loan Status</label>
+                        <select id="loanStatus">
+                            <option value="ACTIVE" selected>Active</option>
+                            <option value="CLOSED">Closed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-gold" id="loanSubmit">Add Loan</button>
+
+                <button type="button" class="link-button hidden" id="loanCancel">Cancel editing</button>
+
+            </form>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="loan" data-tab="list">
+
+            <div class="card">
+                <div class="card-head">
+                    <h2>Your Loans</h2>
                     <span class="pill-count" id="loanCount">0 ACTIVE</span>
                 </div>
 
                 <div id="loanPlan" class="loan-plan"></div>
 
                 <div id="loansList" class="record-list"></div>
+            </div>
+
             </div>
 
         </section>
@@ -552,27 +744,71 @@
                 <p>Create a savings target and track your progress.</p>
             </div>
 
+            <div class="subtabs" data-group="goal" role="tablist">
+                <button type="button" data-tab="list" class="active">My goals</button>
+                <button type="button" data-tab="add">Add goal</button>
+                <button type="button" data-tab="record">Record savings</button>
+            </div>
+
+            <div class="tab-panel hidden" data-group="goal" data-tab="add">
+
             <form id="goalForm" class="card">
 
-                <h2>Create a Goal</h2>
+                <h2 id="goalFormTitle">Create a Goal</h2>
 
-                <label for="goalName">Goal Name</label>
-                <input id="goalName" type="text" maxlength="60" placeholder="e.g. New laptop" required>
+                <div class="two-col">
+                    <div class="wide">
+                        <label for="goalName">Goal Name</label>
+                        <input id="goalName" type="text" maxlength="60" placeholder="e.g. New laptop" required>
+                    </div>
+                    <div>
+                        <label for="goalTarget">Target Amount (₹)</label>
+                        <input id="goalTarget" type="number" min="1" max="1000000000" step="0.01" placeholder="0.00" required>
+                    </div>
+                    <div>
+                        <label for="goalSaved">Already Saved (₹)</label>
+                        <input id="goalSaved" type="number" min="0" max="1000000000" step="0.01" value="0" required>
+                    </div>
+                    <div>
+                        <label for="goalDate">Target Date</label>
+                        <input id="goalDate" type="date">
+                    </div>
+                    <div>
+                        <label for="goalMonthly">Planned Saving a Month (₹)</label>
+                        <input id="goalMonthly" type="number" min="0" max="1000000000" step="0.01" placeholder="Optional">
+                    </div>
+                    <div>
+                        <label for="goalPriority">Priority</label>
+                        <select id="goalPriority">
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM" selected>Medium</option>
+                            <option value="LOW">Low</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="goalRemind">Remind Me on Day of Month</label>
+                        <input id="goalRemind" type="number" min="1" max="28" step="1" placeholder="Optional, 1 to 28">
+                    </div>
+                </div>
 
-                <label for="goalTarget">Target Amount (₹)</label>
-                <input id="goalTarget" type="number" min="1" max="1000000000" step="0.01" placeholder="0.00" required>
+                <button type="submit" class="btn-gold" id="goalSubmit">Add Goal</button>
 
-                <label for="goalSaved">Already Saved (₹)</label>
-                <input id="goalSaved" type="number" min="0" max="1000000000" step="0.01" value="0" required>
-
-                <button type="submit" class="btn-gold">Add Goal</button>
+                <button type="button" class="link-button hidden" id="goalCancel">Cancel editing</button>
 
             </form>
+
+            </div>
+
+            <div class="tab-panel" data-group="goal" data-tab="list">
 
             <div class="card">
                 <h2>Your goals</h2>
                 <div id="goalsList" class="record-list"></div>
             </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="goal" data-tab="record">
 
             <form id="savingsForm" class="card">
 
@@ -581,24 +817,32 @@
                     <span class="pill-count" id="savingsTotal">₹0.00</span>
                 </div>
 
-                <label for="savingsName">Savings Note</label>
-                <input id="savingsName" type="text" maxlength="60" placeholder="e.g. Monthly savings" required>
-
-                <label for="savingsAmount">Amount (₹)</label>
-                <input id="savingsAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="0.00" required>
-
-                <label for="savingsPeriod">Period</label>
-                <select id="savingsPeriod">
-                    <option value="Daily">Daily</option>
-                    <option value="Monthly" selected>Monthly</option>
-                    <option value="Yearly">Yearly</option>
-                </select>
+                <div class="two-col">
+                    <div class="wide">
+                        <label for="savingsName">Savings Note</label>
+                        <input id="savingsName" type="text" maxlength="60" placeholder="e.g. Monthly savings" required>
+                    </div>
+                    <div>
+                        <label for="savingsAmount">Amount (₹)</label>
+                        <input id="savingsAmount" type="number" min="0.01" max="1000000000" step="0.01" placeholder="0.00" required>
+                    </div>
+                    <div>
+                        <label for="savingsPeriod">Period</label>
+                        <select id="savingsPeriod">
+                            <option value="Daily">Daily</option>
+                            <option value="Monthly" selected>Monthly</option>
+                            <option value="Yearly">Yearly</option>
+                        </select>
+                    </div>
+                </div>
 
                 <button type="submit" class="btn-gold">Record Savings</button>
 
                 <div id="savingsList" class="record-list" style="margin-top:16px"></div>
 
             </form>
+
+            </div>
 
         </section>
 
@@ -611,6 +855,13 @@
                 <p>Everything you sent, everything you received, and the status of your PayPal payments.</p>
             </div>
 
+            <div class="subtabs" data-group="tx" role="tablist">
+                <button type="button" data-tab="history" class="active">History</button>
+                <button type="button" data-tab="status">PayPal status</button>
+            </div>
+
+            <div class="tab-panel hidden" data-group="tx" data-tab="status">
+
             <div class="card">
                 <div class="card-head">
                     <h2>PayPal Payment Status</h2>
@@ -619,6 +870,10 @@
 
                 <div id="paypalStatus" class="record-list"></div>
             </div>
+
+            </div>
+
+            <div class="tab-panel" data-group="tx" data-tab="history">
 
             <div class="card">
                 <div class="card-head">
@@ -637,6 +892,8 @@
                 <p class="footer-note" id="historyNote"></p>
             </div>
 
+            </div>
+
         </section>
 
         <!-- ================= SPENDING FORECAST ================= -->
@@ -651,9 +908,20 @@
                 </div>
             </div>
 
+            <div class="subtabs" data-group="forecast" role="tablist">
+                <button type="button" data-tab="numbers" class="active">Forecast</button>
+                <button type="button" data-tab="ai">Guardian AI</button>
+            </div>
+
+            <div class="tab-panel" data-group="forecast" data-tab="numbers">
+
             <div class="card" id="forecastCard">
                 <div class="empty-state">Loading your forecast...</div>
             </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="forecast" data-tab="ai">
 
             <div class="card">
                 <h2><svg class="i"><use href="#i-trend"/></svg>Guardian AI</h2>
@@ -662,6 +930,8 @@
                 <div id="forecastAi"></div>
 
                 <button type="button" class="btn-gold" id="forecastExplain" style="width:100%;margin-top:12px">Explain my forecast</button>
+            </div>
+
             </div>
 
         </section>
@@ -678,10 +948,21 @@
                 </div>
             </div>
 
+            <div class="subtabs" data-group="fraud" role="tablist">
+                <button type="button" data-tab="alerts" class="active">Alerts</button>
+                <button type="button" data-tab="rules">What it watches</button>
+            </div>
+
+            <div class="tab-panel" data-group="fraud" data-tab="alerts">
+
             <div class="card">
                 <h2><svg class="i"><use href="#i-shield"/></svg>Payments that needed confirmation</h2>
                 <div id="fraudList" class="record-list"></div>
             </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="fraud" data-tab="rules">
 
             <div class="card">
                 <h2>What the Guardian watches for</h2>
@@ -691,6 +972,8 @@
                     <div class="record-item"><div><strong>Rapid payments</strong><div class="sub">3 or more payments started in 10 minutes.</div></div></div>
                 </div>
                 <p class="footer-note">A flag never blocks you. It asks you to confirm before the payment goes to PayPal.</p>
+            </div>
+
             </div>
 
         </section>
@@ -714,7 +997,14 @@
 
             <!-- ======== SECTION 1: AI & PAYMENTS ======== -->
 
-            <div id="gAi">
+            <div id="gAi" class="tab-host">
+
+                <div class="subtabs" data-group="gai" role="tablist">
+                    <button type="button" data-tab="chat" class="active">AI Guardian</button>
+                    <button type="button" data-tab="paypal">PayPal</button>
+                </div>
+
+                <div class="tab-panel" data-group="gai" data-tab="chat">
 
                 <div class="card" id="agentCard">
                     <h2><svg class="i"><use href="#i-robot"/></svg>AI Financial Guardian</h2>
@@ -740,15 +1030,17 @@
                     </form>
                 </div>
 
+                </div>
+
+                <div class="tab-panel hidden" data-group="gai" data-tab="paypal">
+
                 <div class="card">
                     <div class="card-head">
                         <h2><svg class="i"><use href="#i-pay"/></svg>PayPal Payment System</h2>
                         <button type="button" class="small-button" id="gRefreshPayments">Refresh</button>
                     </div>
 
-                    <div id="paypalSystem" class="sys-lines"></div>
-
-                    <div class="two-col" style="margin-top:12px">
+                    <div class="two-col">
                         <button type="button" class="btn-gold" onclick="navigateTo('paymentView', 'send')">Send money</button>
                         <button type="button" onclick="navigateTo('paymentView', 'receive')">Receive money</button>
                     </div>
@@ -766,14 +1058,25 @@
 
                     <div id="paymentTable"></div>
 
-                    <p class="footer-note">A payment shows as Completed only after PayPal confirms it. Webhooks let Monetra finish a payment even if the browser was closed.</p>
+                    <p class="footer-note">A payment shows as Completed only after PayPal confirms it.</p>
+                </div>
+
                 </div>
 
             </div>
 
             <!-- ======== SECTION 2: FAMILY & HOME ======== -->
 
-            <div id="gFamily" class="hidden">
+            <div id="gFamily" class="tab-host hidden">
+
+                <div class="subtabs" data-group="ghome" role="tablist">
+                    <button type="button" data-tab="todo" class="active">To do</button>
+                    <button type="button" data-tab="add">Add</button>
+                    <button type="button" data-tab="report">Report</button>
+                    <button type="button" data-tab="all">All</button>
+                </div>
+
+                <div class="tab-panel" data-group="ghome" data-tab="todo">
 
                 <div class="card" id="homeCard">
                     <div class="card-head">
@@ -787,65 +1090,283 @@
                     <h3 class="sub-title">To do</h3>
 
                     <div id="homeDue" class="record-list"></div>
+                </div>
 
-                    <details class="fold" id="homeAddFold">
-                        <summary>＋ Add a household expense</summary>
+                </div>
 
-                        <form id="homeForm" class="fold-body">
-                            <div class="two-col">
-                                <div>
-                                    <label for="homeName">Name</label>
-                                    <input id="homeName" type="text" maxlength="60" placeholder="e.g. Money for home" required>
-                                </div>
-                                <div>
-                                    <label for="homeAmount">Amount (₹)</label>
-                                    <input id="homeAmount" type="number" min="0.01" max="10000000" step="0.01" required>
-                                </div>
-                                <div>
-                                    <label for="homeCategory">Category</label>
-                                    <select id="homeCategory"></select>
-                                </div>
-                                <div>
-                                    <label for="homeFrequency">Repeats</label>
-                                    <select id="homeFrequency">
-                                        <option value="MONTHLY">Monthly</option>
-                                        <option value="DAILY">Daily</option>
-                                        <option value="WEEKLY">Weekly</option>
-                                        <option value="YEARLY">Yearly</option>
-                                        <option value="ONCE">One time</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="homeStart">First due date</label>
-                                    <input id="homeStart" type="date" required>
-                                </div>
-                                <div>
-                                    <label for="homeRemind">Remind me (days before)</label>
-                                    <input id="homeRemind" type="number" min="0" max="14" value="1">
-                                </div>
-                            </div>
+                <div class="tab-panel hidden" data-group="ghome" data-tab="add">
 
+                <form id="homeForm" class="card">
+
+                    <h2>Add a household expense</h2>
+
+                    <div class="two-col">
+                        <div>
+                            <label for="homeName">Name</label>
+                            <input id="homeName" type="text" maxlength="60" placeholder="e.g. Money for home" required>
+                        </div>
+                        <div>
+                            <label for="homeAmount">Amount (₹)</label>
+                            <input id="homeAmount" type="number" min="0.01" max="10000000" step="0.01" required>
+                        </div>
+                        <div>
+                            <label for="homeCategory">Category</label>
+                            <select id="homeCategory"></select>
+                        </div>
+                        <div>
+                            <label for="homeFrequency">Repeats</label>
+                            <select id="homeFrequency">
+                                <option value="MONTHLY">Monthly</option>
+                                <option value="DAILY">Daily</option>
+                                <option value="WEEKLY">Weekly</option>
+                                <option value="YEARLY">Yearly</option>
+                                <option value="ONCE">One time</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="homeStart">First due date</label>
+                            <input id="homeStart" type="date" required>
+                        </div>
+                        <div>
+                            <label for="homeRemind">Remind me (days before)</label>
+                            <input id="homeRemind" type="number" min="0" max="14" value="1">
+                        </div>
+                        <div class="wide">
                             <label for="homePhone">Pay to a mobile number (optional)</label>
                             <input id="homePhone" type="tel" maxlength="16" placeholder="Lets you pay it with Monetra in one tap">
+                        </div>
+                    </div>
 
-                            <button type="submit" class="btn-gold" style="width:100%;margin-top:12px">Save expense</button>
-                        </form>
-                    </details>
+                    <button type="submit" class="btn-gold">Save expense</button>
 
-                    <h3 class="sub-title">
-                        <span>Monthly report</span>
+                </form>
+
+                </div>
+
+                <div class="tab-panel hidden" data-group="ghome" data-tab="report">
+
+                <div class="card">
+                    <div class="card-head">
+                        <h2>Monthly report</h2>
                         <span class="month-nav">
                             <button type="button" class="small-button" id="homePrevMonth" aria-label="Previous month">‹</button>
                             <span id="homeMonthLabel"></span>
                             <button type="button" class="small-button" id="homeNextMonth" aria-label="Next month">›</button>
                         </span>
-                    </h3>
+                    </div>
 
                     <div id="homeReport"></div>
+                </div>
 
-                    <h3 class="sub-title">All household expenses</h3>
+                </div>
+
+                <div class="tab-panel hidden" data-group="ghome" data-tab="all">
+
+                <div class="card">
+                    <h2>All household expenses</h2>
 
                     <div id="homeAll" class="record-list"></div>
+                </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- ================= HE: HOME EXPENSES (separate from Pay) ================= -->
+
+        <section class="view-section" id="heView">
+
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
+                <div>
+                    <h1>HE — Home Expenses</h1>
+                    <p>Pay and remember your home expenses. Kept apart from Pay, with its own history.</p>
+                </div>
+            </div>
+
+            <div class="subtabs" data-group="he" role="tablist">
+                <button type="button" data-tab="pay" class="active">Pay</button>
+                <button type="button" data-tab="reminders">Reminders</button>
+                <button type="button" data-tab="history">History</button>
+            </div>
+
+            <div id="heResult" class="alert-box hidden" role="status" aria-live="polite"></div>
+
+            <!-- PAY: Daily, Monthly or Yearly, then one of six payment methods -->
+
+            <div class="tab-panel" data-group="he" data-tab="pay">
+
+                <div class="period-tabs three" id="heTabs" role="tablist">
+                    <button type="button" data-he="DAILY" class="active"><span class="he-emoji">📅</span>Daily HE Payment</button>
+                    <button type="button" data-he="MONTHLY"><span class="he-emoji">📆</span>Monthly HE Payment</button>
+                    <button type="button" data-he="YEARLY"><span class="he-emoji">🗓️</span>Yearly HE Payment</button>
+                </div>
+
+                <form id="heForm" class="card" autocomplete="off">
+
+                    <h2><svg class="i"><use href="#i-home"/></svg><span id="heFormTitle">Daily HE Payment</span></h2>
+
+                    <div class="method-tabs tiles" id="heMethods" role="tablist" aria-label="Payment method">
+                        <button type="button" data-method="SCAN"><svg class="i"><use href="#i-qr"/></svg>Scan &amp; Pay</button>
+                        <button type="button" data-method="MYQR"><svg class="i"><use href="#i-user"/></svg>My Payment QR</button>
+                        <button type="button" data-method="MOBILE" class="active"><svg class="i"><use href="#i-phone"/></svg>Mobile Number</button>
+                        <button type="button" data-method="BANK"><svg class="i"><use href="#i-bank"/></svg>Bank Transfer</button>
+                        <button type="button" data-method="CASH"><svg class="i"><use href="#i-cash"/></svg>Cash</button>
+                    </div>
+
+                    <p class="hint" id="heMethodHint"></p>
+
+                    <!-- Scan & Pay: the camera, or a picture of the code -->
+
+                    <div id="heScanBox" class="hidden">
+
+                        <div class="scanner hidden" id="heScannerBox">
+                            <video id="heScanVideo" playsinline muted></video>
+                            <div class="frame"></div>
+                        </div>
+
+                        <div class="two-col" style="margin-top:10px">
+                            <button type="button" id="heScanStart" class="btn-gold">Open camera</button>
+                            <button type="button" id="heScanUpload">Choose QR image</button>
+                        </div>
+
+                        <input type="file" id="heScanFile" accept="image/*" class="hidden">
+
+                        <div id="heScanMessage" class="hint" role="status" aria-live="polite"></div>
+
+                    </div>
+
+                    <!-- My Payment QR: how other people pay you -->
+
+                    <div id="heQrBox" class="hidden centered">
+                        <div class="qr-box small"><img id="heMyQr" alt="Your Monetra payment QR code"></div>
+                        <div class="big-number" id="heMyPhone"></div>
+                    </div>
+
+                    <!-- Mobile Number (and after a scan): who is being paid -->
+
+                    <div id="hePayeeBox">
+
+                        <div class="field" id="hePhoneField">
+                            <svg class="i"><use href="#i-search"/></svg>
+                            <input id="hePhone" type="text" maxlength="40" autocomplete="off"
+                                   placeholder="Name or mobile number (+91...)" aria-label="Recipient name or mobile number">
+                        </div>
+
+                        <div id="heContactList" class="contact-list hidden" role="listbox" aria-label="Contacts"></div>
+
+                        <div id="heRecipientCard" class="recipient-card hidden" aria-live="polite"></div>
+
+                    </div>
+
+                    <!-- Bank Transfer: made in the bank's app, recorded here -->
+
+                    <div id="heBankBox" class="hidden">
+
+                        <div class="two-col">
+                            <div>
+                                <label for="heBankType">Sent by</label>
+                                <select id="heBankType">
+                                    <option value="IMPS" selected>IMPS</option>
+                                    <option value="NEFT">NEFT</option>
+                                    <option value="RTGS">RTGS</option>
+                                    <option value="UPI">UPI</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="heBankName">Paid to</label>
+                                <input id="heBankName" type="text" maxlength="60" placeholder="Name of the person or shop">
+                            </div>
+                            <div>
+                                <label for="heBankLast4">Account, last 4 digits</label>
+                                <input id="heBankLast4" type="text" inputmode="numeric" maxlength="4" placeholder="Optional">
+                            </div>
+                            <div>
+                                <label for="heBankRef">Bank reference / UTR</label>
+                                <input id="heBankRef" type="text" maxlength="40" placeholder="Optional">
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Cash -->
+
+                    <div id="heCashBox" class="hidden">
+                        <label for="heCashTo">Paid to (optional)</label>
+                        <input id="heCashTo" type="text" maxlength="60" placeholder="e.g. Milkman">
+                    </div>
+
+                    <div class="pay-row" id="heAmountRow">
+
+                        <div class="field has-prefix">
+                            <span class="prefix">₹</span>
+                            <input id="heAmount" type="number" min="0.01" max="10000000" step="0.01"
+                                   placeholder="Amount" aria-label="Amount in rupees">
+                        </div>
+
+                        <div class="field">
+                            <svg class="i"><use href="#i-wallet"/></svg>
+                            <input id="heNote" type="text" maxlength="100" placeholder="What are you paying for? (optional)"
+                                   aria-label="What are you paying for">
+                        </div>
+
+                    </div>
+
+                    <button type="submit" class="btn-gold" id="hePay">Pay Now</button>
+
+                    <div id="heMessage" class="message" role="status" aria-live="polite"></div>
+
+                </form>
+
+            </div>
+
+            <!-- REMINDERS: each switched on by itself -->
+
+            <div class="tab-panel hidden" data-group="he" data-tab="reminders">
+
+                <form id="heReminderForm" class="card">
+
+                    <h2><svg class="i"><use href="#i-bell"/></svg>HE Reminder Notifications</h2>
+
+                    <div class="he-reminder">
+                        <label class="check-row"><input type="checkbox" id="heRemDailyOn">Daily reminders</label>
+                        <div><label for="heRemDailyTime">At</label><input type="time" id="heRemDailyTime" value="09:00"></div>
+                    </div>
+
+                    <div class="he-reminder">
+                        <label class="check-row"><input type="checkbox" id="heRemMonthlyOn">Monthly reminders</label>
+                        <div><label for="heRemMonthlyDay">Day</label><input type="number" id="heRemMonthlyDay" min="1" max="31" step="1" value="1"></div>
+                        <div><label for="heRemMonthlyTime">At</label><input type="time" id="heRemMonthlyTime" value="09:00"></div>
+                    </div>
+
+                    <div class="he-reminder">
+                        <label class="check-row"><input type="checkbox" id="heRemYearlyOn">Yearly reminders</label>
+                        <div><label for="heRemYearlyDate">Date</label><input type="date" id="heRemYearlyDate"></div>
+                        <div><label for="heRemYearlyTime">At</label><input type="time" id="heRemYearlyTime" value="09:00"></div>
+                    </div>
+
+                    <p class="hint">A reminder shows in your Monetra notifications from the chosen time, while Monetra is open.
+                        It never moves money.</p>
+
+                    <button type="submit" class="btn-gold">Save Reminders</button>
+
+                </form>
+
+            </div>
+
+            <!-- HISTORY: every HE payment, with its details -->
+
+            <div class="tab-panel hidden" data-group="he" data-tab="history">
+
+                <div class="card">
+                    <div class="card-head">
+                        <h2>HE Transaction History</h2>
+                        <button type="button" class="small-button" id="heRefresh">Refresh</button>
+                    </div>
+
+                    <div id="heHistory" class="record-list"></div>
                 </div>
 
             </div>
@@ -864,8 +1385,32 @@
                 </div>
             </div>
 
+            <div class="subtabs" data-group="notif" role="tablist">
+                <button type="button" data-tab="list" class="active">Notifications</button>
+                <button type="button" data-tab="settings">Settings</button>
+            </div>
+
+            <div class="tab-panel" data-group="notif" data-tab="list">
+
             <div class="card">
                 <div id="notifList" class="record-list"></div>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="notif" data-tab="settings">
+
+
+            <div class="card">
+                <h2>Guardian notifications</h2>
+
+                <p class="card-sub">Choose what the Guardian reminds you about. Each notice is sent once.</p>
+
+                <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending: close to or over your limit</label>
+                <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans: EMI coming up, due today or not marked paid</label>
+                <label class="check-row"><input type="checkbox" id="notifySavings" checked>Savings goals: reminders, progress and falling behind</label>
+            </div>
+
             </div>
 
         </section>
@@ -883,6 +1428,19 @@
     </nav>
 
 </section>
+
+<!-- A question box drawn by the app itself: some app windows never show the browser's own pop-ups -->
+
+<div id="askBox" class="ask-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="askText">
+    <div class="ask-card">
+        <p id="askText"></p>
+        <input id="askInput" type="text" class="hidden" autocomplete="off" aria-label="Your answer">
+        <div class="button-row">
+            <button type="button" id="askNo">Cancel</button>
+            <button type="button" id="askYes" class="btn-gold">OK</button>
+        </div>
+    </div>
+</div>
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 

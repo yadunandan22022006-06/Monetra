@@ -123,7 +123,7 @@ class FreeAiFlowTest {
 		assertTrue(r.body().contains("You are inside your limit."), r.body());
 
 		String sent = AI.requests.get(0);
-		assertTrue(sent.contains("leaves only ₹50"), sent);
+		assertTrue(sent.contains("leaves only ₹50.00"), sent);
 		assertTrue(sent.contains("Bike EMI"), sent);
 		assertTrue(sent.contains("Laptop fund"), sent);
 		assertTrue(sent.contains("Ravi Free"), sent);
@@ -144,8 +144,9 @@ class FreeAiFlowTest {
 		assertTrue(ok.body().contains("leaves ₹400"), ok.body());
 		assertEquals(2, AI.requests.size());
 
-		/* Two wrong replies in a row: nothing from the AI is shown. The page keeps its rule-based advice. */
+		/* Three wrong replies in a row: nothing from the AI is shown. The page keeps its rule-based advice. */
 		AI.reply(FakeOpenAi.text("You have ₹9,999 left."));
+		AI.reply(FakeOpenAi.text("You have ₹7,777 left."));
 		AI.reply(FakeOpenAi.text("You have ₹8,888 left."));
 
 		HttpResponse<String> bad = zoe.post("/api/guardian/explain", "{\"amountInr\":100}");

@@ -5,15 +5,12 @@ import com.fasterxml.jackson.databind.node.MissingNode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -26,6 +23,7 @@ public final class BudgetRules {
     private static final int EMI_WARNING_DAYS = 7;
     private static final String[] PERIODS = {"daily", "weekly", "monthly", "yearly"};
     private static final int MAX_LISTED = 8;
+    private static final int EMI_WINDOW_DAYS = 30;
 
     private BudgetRules() {
     }
@@ -51,6 +49,10 @@ public final class BudgetRules {
         BigDecimal incomeMonth = BigDecimal.ZERO;
 
         for (JsonNode item : safe.path("expenses")) {
+            if (!countsTowardsLimits(item)) {
+                continue;
+            }
+
             String date = item.path("date").asText("");
             BigDecimal value = decimal(item.path("amount"));
 
@@ -228,11 +230,27 @@ public final class BudgetRules {
 
         List<Map<String, Object>> loans = new ArrayList<>();
         BigDecimal emiPerMonth = BigDecimal.ZERO;
+        BigDecimal emiDueSoon = BigDecimal.ZERO;
 
         for (JsonNode loan : safe.path("loans")) {
             BigDecimal emi = decimal(loan.path("amount"));
 
             emiPerMonth = emiPerMonth.add(emi);
+
+            Long days = null;
+
+            try {
+                days = ChronoUnit.DAYS.between(today, LocalDate.parse(loan.path("due").asText("")));
+
+            } catch (Exception e) {
+                /* a loan without a valid date is listed without a countdown */
+            }
+
+            /* Overdue EMIs and the ones due in the next 30 days still have to be paid. */
+
+            if (days != null && days <= EMI_WINDOW_DAYS) {
+                emiDueSoon = emiDueSoon.add(emi);
+            }
 
             if (loans.size() >= MAX_LISTED) {
                 continue;
@@ -243,13 +261,8 @@ public final class BudgetRules {
             m.put("emiInr", money(emi));
             m.put("dueDate", loan.path("due").asText(""));
 
-            try {
-                long days = ChronoUnit.DAYS.between(today, LocalDate.parse(loan.path("due").asText("")));
-
+            if (days != null) {
                 m.put(days < 0 ? "overdueByDays" : "dueInDays", Math.abs(days));
-
-            } catch (Exception e) {
-                /* a loan without a valid date is listed without a countdown */
             }
 
             loans.add(m);
@@ -258,6 +271,7 @@ public final class BudgetRules {
         BigDecimal emiPerYear = emiPerMonth.multiply(BigDecimal.valueOf(12));
 
         out.put("loans", loans);
+        out.put("emiDueWithin30DaysInr", money(emiDueSoon));
         out.put("emiTotalPerMonthInr", money(emiPerMonth));
         out.put("emiTotalPerYearInr", money(emiPerYear));
         out.put("emiNeedsSavingPerDayInr", emiPerYear.divide(BigDecimal.valueOf(365), 2, RoundingMode.HALF_UP));
@@ -303,135 +317,11 @@ public final class BudgetRules {
     }
 
     /**
-     * The few facts that matter most for this payment, as short plain sentences. Java reads every
-     * limit, loan, EMI, goal and bill and picks them; the AI only puts them into friendly words.
-     * Keeping the list short is what makes a small, free model reliable.
+     * Spending limits are about everyday spending. An EMI the user marked as paid is a commitment that
+     * the Guardian already tracks on its own, so it lowers the balance but does not use up a limit.
      */
-    public static List<String> paymentBrief(Map<String, Object> facts) {
-        List<String> lines = new ArrayList<>();
-
-        String to = String.valueOf(facts.getOrDefault("recipientName", "")).trim();
-        String why = String.valueOf(facts.getOrDefault("paymentPurpose", "")).trim();
-
-        lines.add("You are about to pay " + rupees(facts.get("paymentAmountInr"))
-                + (to.isEmpty() ? "" : " to " + to)
-                + (why.isEmpty() ? "" : " for " + why) + ". The payment has not been made yet.");
-
-        /* 1. The spending limits: the ones that are broken, else the tightest one, else all clear. */
-
-        List<?> limits = (List<?>) facts.get("limits");
-
-        boolean strained = false;
-        int over = 0;
-
-        for (Object o : limits) {
-            Map<?, ?> m = (Map<?, ?>) o;
-
-            if (m.containsKey("overLimitByInr") && over < 2) {
-                BigDecimal times = (BigDecimal) m.get("paymentIsTimesTheLimit");
-
-                lines.add("This payment goes OVER your " + m.get("period") + " limit of " + rupees(m.get("limitInr"))
-                        + " by " + rupees(m.get("overLimitByInr")) + "."
-                        + (over == 0 && times.compareTo(BigDecimal.valueOf(2)) >= 0
-                                ? " The payment alone is about " + times.setScale(0, RoundingMode.HALF_UP).toPlainString()
-                                        + " times that limit."
-                                : ""));
-                over++;
-                strained = true;
-            }
-        }
-
-        if (over == 0) {
-            Map<?, ?> low = null;
-
-            for (Object o : limits) {
-                if (low == null && "low".equals(((Map<?, ?>) o).get("status"))) {
-                    low = (Map<?, ?>) o;
-                }
-            }
-
-            if (limits.isEmpty()) {
-                lines.add("No spending limit is set, so the budget cannot be checked.");
-
-            } else if (low != null) {
-                lines.add("This payment fits your " + low.get("period") + " limit of " + rupees(low.get("limitInr"))
-                        + " but leaves only " + rupees(low.get("leftAfterThisPaymentInr")) + " of it.");
-                strained = true;
-
-            } else {
-                Map<?, ?> first = (Map<?, ?>) limits.get(0);
-
-                lines.add("This payment fits every spending limit you set. After it, " + rupees(first.get("leftAfterThisPaymentInr"))
-                        + " is left of your " + first.get("period") + " limit of " + rupees(first.get("limitInr")) + ".");
-            }
-        }
-
-        /* 2. The most urgent EMI: one that is overdue, else the next one if it is due within a week. */
-
-        Map<?, ?> overdue = null;
-        Map<?, ?> next = null;
-
-        for (Object o : (List<?>) facts.get("loans")) {
-            Map<?, ?> m = (Map<?, ?>) o;
-
-            if (m.containsKey("overdueByDays") && overdue == null) {
-                overdue = m;
-            }
-
-            if (m.containsKey("dueInDays") && (next == null || (Long) m.get("dueInDays") < (Long) next.get("dueInDays"))) {
-                next = m;
-            }
-        }
-
-        if (overdue != null) {
-            lines.add("Your EMI \"" + overdue.get("name") + "\" of " + rupees(overdue.get("emiInr"))
-                    + " is overdue by " + days(overdue.get("overdueByDays")) + ".");
-        }
-
-        if (next != null && Boolean.TRUE.equals(facts.get("anEmiIsDueWithin7Days"))) {
-            boolean today = Long.valueOf(0).equals(next.get("dueInDays"));
-
-            lines.add("Your EMI \"" + next.get("name") + "\" of " + rupees(next.get("emiInr"))
-                    + (today ? " is due today" : " is due in " + days(next.get("dueInDays")))
-                    + (Boolean.TRUE.equals(facts.get("thisPaymentMayLeaveTooLittleForThatEmi"))
-                            ? ", and after this payment this month's budget may not cover it."
-                            : ", and this payment still leaves room for it this month."));
-        }
-
-        /* 3. Household bills waiting to be paid. */
-
-        if (facts.get("householdBillsUnpaidNext7DaysInr") instanceof BigDecimal bills && bills.signum() > 0) {
-            lines.add("Household bills of " + rupees(bills) + " are unpaid and due within a week.");
-        }
-
-        /* 4. A savings goal, only when this payment strains the budget. */
-
-        if (strained) {
-            for (Object o : (List<?>) facts.get("savingsGoals")) {
-                Map<?, ?> m = (Map<?, ?>) o;
-
-                if (((BigDecimal) m.get("stillNeededInr")).signum() > 0) {
-                    lines.add("Your savings goal \"" + m.get("name") + "\" still needs " + rupees(m.get("stillNeededInr")) + ".");
-                    break;
-                }
-            }
-        }
-
-        return lines;
-    }
-
-    /** "₹1,500" or "₹98.63": the way the app shows money, so the AI repeats it the same way. */
-    private static String rupees(Object value) {
-        BigDecimal amount = value instanceof BigDecimal b ? b : BigDecimal.ZERO;
-
-        boolean whole = amount.stripTrailingZeros().scale() <= 0;
-
-        return "₹" + new DecimalFormat(whole ? "#,##0" : "#,##0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
-                .format(amount);
-    }
-
-    private static String days(Object count) {
-        return Long.valueOf(1).equals(count) ? "1 day" : count + " days";
+    static boolean countsTowardsLimits(JsonNode expense) {
+        return !"emi".equals(expense.path("source").asText(""));
     }
 
     private static String clip(String text) {
@@ -452,7 +342,7 @@ public final class BudgetRules {
         BigDecimal spentMonth = BigDecimal.ZERO;
 
         for (JsonNode item : safe.path("expenses")) {
-            if (item.path("date").asText("").startsWith(monthText)) {
+            if (countsTowardsLimits(item) && item.path("date").asText("").startsWith(monthText)) {
                 spentMonth = spentMonth.add(decimal(item.path("amount")));
             }
         }
@@ -524,7 +414,7 @@ public final class BudgetRules {
     }
 
     /** The limit for a period from limits.{period}, falling back to the old dailyLimit field. */
-    private static BigDecimal limit(JsonNode data, String period) {
+    static BigDecimal limit(JsonNode data, String period) {
         BigDecimal value = decimal(data.path("limits").path(period));
 
         if (value.signum() <= 0 && "daily".equals(period)) {
@@ -534,7 +424,7 @@ public final class BudgetRules {
         return value;
     }
 
-    private static BigDecimal decimal(JsonNode node) {
+    static BigDecimal decimal(JsonNode node) {
         try {
             if (node == null || node.isMissingNode() || node.isNull()) {
                 return BigDecimal.ZERO;
@@ -549,7 +439,7 @@ public final class BudgetRules {
         }
     }
 
-    private static BigDecimal money(BigDecimal value) {
+    static BigDecimal money(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
     }
 }

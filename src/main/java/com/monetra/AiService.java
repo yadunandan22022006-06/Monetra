@@ -46,6 +46,11 @@ public class AiService implements AiProvider {
         return active().configured();
     }
 
+    /** True when the AI in use runs on this computer, so waking it up early is free. */
+    public boolean runsLocally() {
+        return active() == openai && openai.configured() && openai.local();
+    }
+
     @Override
     public String name() {
         return active().name();

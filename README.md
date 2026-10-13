@@ -6,6 +6,43 @@
 
 Everything runs in **PayPal Sandbox** with test money. No real money moves.
 
+## The Financial Guardian: one payment, three consequences
+
+Monetra does not just tell you how much you are spending. Before you pay, one analysis looks at the payment three ways at once and tells you what it could mean for your next EMI, next month and your goals.
+
+| Awareness | What Monetra checks | Example |
+|---|---|---|
+| **Daily spending** | Today's limit, what is already spent, the weekly, monthly and yearly limits | "Your ₹2,000.00 daily limit is exceeded by ₹19,000.00." |
+| **Loan repayment** | Your available balance, EMIs, home bills and essential expenses before your next income | "Your projected balance would be -₹1,000.00. That is NOT enough to cover them, so you may fall short." |
+| **Savings goals** | The goal you are saving for, your plan and whether you are behind it | "If this payment comes from that savings, the amount you still need rises from ₹40,000.00 to ₹45,000.00." |
+
+- **On the review screen** each warning that applies is shown in its own red box (Daily limit exceeded, Payment risk, Loan repayment risk, Savings goal impact, Your decision), with a risk level for each area and an overall status. A payment that fits shows no warning. You can **Go Back**, **Adjust Amount**, **Review Budget** or **Continue Anyway**: the user always decides.
+- **On Home** three cards (Daily Budget, Loan Guardian, Savings Goals) open their pages.
+- **Loans**: outstanding balance, EMI, due date, interest rate, installments left, frequency and status; an EMI calendar; "Mark EMI paid"; and a next-month forecast (expected income minus EMIs, essentials, bills and planned savings).
+- **Savings goals**: target date, planned monthly saving and priority; what to save a day, a week or a month to reach the date; a real shortfall when you fall behind your plan; and advice that never asks for more than is free after EMIs and essentials.
+- **My money** (in Spending): available balance, monthly income, income day, essential expenses and an optional buffer. The balance moves by itself with every payment and expense recorded.
+- Every figure is calculated in Java with decimal arithmetic (`DailyBudgetService`, `LoanRepaymentService`, `SavingsGoalService`, `FinancialForecastService`, `GuardianAnalysisService`). The AI only puts the finished sentences into words, and its reply is thrown away if it changes a number, softens a broken limit or drops a warning. When a figure is missing, Monetra says what it cannot check instead of guessing.
+- **Notifications** (each sent once, and you can switch each area off): close to or over the daily limit, EMI coming up, due today or not marked paid, a possible shortfall before the next EMI, savings reminders, progress and falling behind. They are created while Monetra is open; nothing is sent in the background.
+
+## HE: Home Expenses
+
+The **HE** button opens home expenses, kept apart from Pay.
+
+- Three payment options, each with its own form: **Daily**, **Monthly** and **Yearly HE Payment**. The form only shows the fields the chosen payment method needs.
+- Five payment methods. The server (`GET /api/he/methods`) tells the page what each one really does:
+
+| Method | What happens |
+|---|---|
+| **Scan & Pay** | Scan a Monetra or UPI QR code with the camera, or choose its picture. The name is shown, you enter the amount, and you approve on PayPal. |
+| **My Payment QR** | Your own Monetra QR code, for other people to scan and pay you. |
+| **Mobile number** | Type a number (with or without +91) or pick a contact. The number is checked and the name is shown (the registered name on Monetra, or your own contact's name). You approve on PayPal. As on the Pay screen, a number that is not on Monetra can still be paid through PayPal. |
+| **Bank transfer** | PayPal cannot send money to a bank account, so Monetra does **not** start a bank transfer. You make it in your bank's app (NEFT, IMPS, RTGS or UPI) and record it here. Only the last 4 digits of an account are kept. |
+| **Cash** | Recorded only after you confirm you really paid. No money is moved. |
+
+- Scan & Pay and Mobile number reuse the same PayPal Sandbox payment as Send Money, with the same Guardian and Fraud Guard checks first. They are shown as **Successful** only when PayPal confirms them; otherwise **Pending**, **Failed** or **Cancelled**. Pressing Pay Now twice makes one payment.
+- **HE reminders** for daily, monthly and yearly expenses, each switched on by itself with its own day or date and time.
+- **HE payment history** with amount, who was paid, date, method, transaction ID and status. Tap a row to see its details. HE payments do not appear in the ordinary Transactions list.
+
 ## The one main button: Monetra Guardian
 
 The **Monetra Guardian** button (top left) opens one place with two sections that cover the three main features. Everything else in the app (Home, Pay, Spending, Loans, Savings, Transactions, Forecast, Fraud Guard, QR, bank transfer) is unchanged.
@@ -16,7 +53,9 @@ The **Monetra Guardian** button (top left) opens one place with two sections tha
 | **AI & Payments** | **PayPal Payment System** | PayPal Orders (send), **PayPal Payouts** (the receiver gets the money in their PayPal account), **verified webhooks**, a payments table with status and payout status, and a "Check with PayPal" recovery button. |
 | **Family & Home** | **Home Expense Guardian** | Recurring household expenses (rent, bills, money for home) that are daily, weekly, monthly, yearly or one time. Upcoming, due today, overdue and paid tracking, reminders, a daily summary and a monthly report. Payments you mark yourself are labelled "not verified"; payments made through Monetra are marked paid when PayPal confirms them. |
 
-**Send Money** also has **contacts search**: people you saved, people you paid or were paid by, and **your own phone contacts**. Tap *Add contacts from your phone* in the search list: on Android Chrome it opens the phone's contact list, on other browsers you choose the contacts file (`.vcf`) exported from your phone or Google Contacts. After that you search by name or number and never type a name. (You cannot search all Monetra users, by design. Phone contacts are stored only for you and *Remove* deletes them.)
+**Send Money** and **HE** have one box for **a name or a mobile number**. As you type, matching contacts appear under it with their name and number, like a phone's dialler: people you saved, people you paid or were paid by, and **your own phone contacts**. Tap *Add contacts from your phone* in the list: on Android Chrome it opens the phone's contact list, on other browsers you choose the contacts file (`.vcf`) exported from your phone or Google Contacts. (You cannot search all Monetra users, by design. Phone contacts are stored only for you and *Remove* deletes them.)
+
+**App-style screens:** the page itself never scrolls. Each screen is split into small tabs (for example Loans: Guardian, EMI calendar, My loans, Add loan), and only a long list scrolls inside its own panel.
 
 Other features: pay by **mobile number, QR code scan or bank account** (the name and the bank are detected for you), **My QR** to get paid, **Fraud Guard**, **Spending Forecast** with AI explanation, loans and EMIs, savings goals, notifications and a transaction history of sent **and received** payments.
 
@@ -133,6 +172,9 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 | `PaymentController`, `PaymentService`, `PaypalClient` | Recipient lookup, PayPal orders, capture, payouts, recovery, history |
 | `PaypalWebhookController` | Verified PayPal webhooks |
 | `BudgetRules`, `FraudRules`, `HomeExpenseRules` | Deterministic, unit-tested rules |
+| `GuardianAnalysisService`, `DailyBudgetService`, `LoanRepaymentService`, `SavingsGoalService`, `FinancialForecastService` | The Financial Guardian: one combined analysis of limits, loans and goals, the dashboard figures and the notifications |
+| `NumberGuard`, `RecordsValidator` | Checks on what the AI writes and on the loan, goal and money figures a user saves |
+| `HeController`, `HePayment` | HE: home expense payments and their history |
 | `AgentController`, `AgentTools`, `AiService`, `OpenAiCompatibleClient`, `AnthropicClient` | The AI agent and its tools |
 | `HomeController`, `HomeExpenseService` | Home Expense Guardian |
 | `ContactController`, `ContactService` | Contacts search and phone contacts |
@@ -144,7 +186,7 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 ./mvnw test
 ```
 
-The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports) and contacts privacy.
+The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports), contacts privacy, and the **Financial Guardian** (daily limit, loan repayment, next-month forecast and savings-goal sums; one payment checked against all three; notifications sent once; the HE payment methods, with cash and bank transfers recorded only on confirmation and PayPal ones verified; refused bad figures; and one user never seeing another's loans, goals or forecasts).
 
 ## API collection
 
@@ -174,8 +216,7 @@ Import `postman/monetra.postman_collection.json` into **Postman**. Log in first;
 
 - **Sandbox only.** Test money. Going live needs a live PayPal merchant account and review.
 - Payouts need **Payouts enabled** on your PayPal app and a **balance** in the Sandbox business account. If a payout fails, the payment stays confirmed and the receiver sees the payout status, with a retry button.
-- A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers.
-- Account balances and spending are **entered by you**, not read from a bank.
+- A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Bank transfer and Cash are records of what you paid yourself; a real bank transfer would need a different payment provider.- Account balances and spending are **entered by you**, not read from a bank.
 - The per-payment lock is in-process, so run a single server instance.
 - Live QR camera scanning needs a browser with `BarcodeDetector` (Chrome, Edge, Android). On any browser you can upload a QR image instead.
 

@@ -25,10 +25,29 @@ public final class NumberGuard {
 
     /** Words that say a limit is respected, or only nearly reached. */
     private static final Pattern SAYS_FITS = Pattern.compile(
-            "within (your|it|the|budget|all|both|every)|close to|good to go|\\bfits\\b|inside your|under your"
+            "(still|is|are|stays|remains|well) within|within it\\b|close to|\\bfits\\b|is inside|are inside|is under your|are under your"
                     + "|not exceed|n't exceed|not go over|n't go over");
 
+    /** Words that say there is too little money for something. */
+    private static final Pattern SAYS_SHORT = Pattern.compile(
+            "not enough|n't enough|not be enough|not cover|n't cover|not be covered|not covered|too little|short of|fall short|falls short");
+
+    /** Words that wave a payment through. */
+    private static final Pattern SAYS_FINE = Pattern.compile("good to go|all set|no issues|without any issues|no problem");
+
     private NumberGuard() {
+    }
+
+    /**
+     * True unless the reply drops a warning that is in the facts. When the facts say something is
+     * NOT enough or NOT covered, the reply has to say so too and must not wave the payment through.
+     */
+    public static boolean keepsWarnings(String reply, String facts) {
+        String text = reply == null ? "" : reply.toLowerCase(Locale.ROOT).replace('’', '\'');
+
+        boolean shortfall = facts != null && (facts.contains("NOT enough") || facts.contains("NOT covered"));
+
+        return !shortfall || (SAYS_SHORT.matcher(text).find() && !SAYS_FINE.matcher(text).find());
     }
 
     /**
@@ -50,7 +69,9 @@ public final class NumberGuard {
             }
         }
 
-        return overLimit ? saysOver && !SAYS_FITS.matcher(text).find() : !saysOver;
+        return overLimit
+                ? saysOver && !SAYS_FITS.matcher(text).find() && !SAYS_FINE.matcher(text).find()
+                : !saysOver;
     }
 
     /** True when every number in the reply also appears in the facts ("1,500.00" and "1500" are the same). */

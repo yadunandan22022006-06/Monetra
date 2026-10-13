@@ -19,7 +19,7 @@ import java.util.Map;
 
 /**
  * Saves and loads the logged-in user's dashboard records, and runs the
- * server-side budget check used before a payment.
+ * server-side Guardian check used before a payment.
  */
 @RestController
 @RequestMapping("/api")
@@ -30,10 +30,14 @@ public class DataController {
     private static final String EMPTY = "{}";
 
     private final UserDataRepository store;
+    private final GuardianAnalysisService guardian;
+    private final RecipientResolver recipients;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public DataController(UserDataRepository store) {
+    public DataController(UserDataRepository store, GuardianAnalysisService guardian, RecipientResolver recipients) {
         this.store = store;
+        this.guardian = guardian;
+        this.recipients = recipients;
     }
 
     @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -66,6 +70,14 @@ public class DataController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid data."));
             }
 
+            /* Loans, goals and the money profile feed the Guardian's sums, so they are checked here too. */
+
+            String problem = RecordsValidator.problem(node);
+
+            if (problem != null) {
+                return ResponseEntity.badRequest().body(Map.of("error", problem));
+            }
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid data."));
         }
@@ -82,7 +94,10 @@ public class DataController {
         return ResponseEntity.ok(Map.of("saved", true));
     }
 
-    /** Budget check calculated from the user's SAVED records, not from the request. */
+    /**
+     * The check before a payment, calculated from the user's SAVED records, not from the request:
+     * the spending limits, plus the Guardian's combined view of limits, loans and savings goals.
+     */
     @PostMapping("/guardian/check")
     public ResponseEntity<?> check(@RequestBody Map<String, Object> body, HttpSession session) {
         Long userId = SessionUser.id(session);
@@ -103,16 +118,29 @@ public class DataController {
             return ResponseEntity.badRequest().body(Map.of("error", "Enter a valid amount."));
         }
 
-        JsonNode data = null;
+        JsonNode data = guardian.data(userId);
 
-        try {
-            data = mapper.readTree(savedJson(userId));
+        LocalDate today = LocalDate.now();
 
-        } catch (Exception e) {
-            data = null;
+        Map<String, Object> out = BudgetRules.check(data, amount, today);
+
+        out.put("guardian", guardian.review(userId, data, amount, recipientName(body, userId), today));
+
+        return ResponseEntity.ok(out);
+    }
+
+    /** The name of who is being paid, found by the server from the number or account. Empty when not given. */
+    private String recipientName(Map<String, Object> body, Long userId) {
+        if (body.get("recipientPhone") == null && body.get("ifsc") == null) {
+            return "";
         }
 
-        return ResponseEntity.ok(BudgetRules.check(data, amount, LocalDate.now()));
+        try {
+            return recipients.resolve(body, userId).name();
+
+        } catch (IllegalArgumentException e) {
+            return "";
+        }
     }
 
     private String savedJson(Long userId) {

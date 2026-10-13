@@ -22,6 +22,9 @@ final class FakePaypal {
     private final AtomicInteger orders = new AtomicInteger();
     final List<String> payoutReceivers = new CopyOnWriteArrayList<>();
 
+    /** What Monetra sent each time it created an order. */
+    final List<String> orderRequests = new CopyOnWriteArrayList<>();
+
     FakePaypal() {
         try {
             server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -51,6 +54,8 @@ final class FakePaypal {
 
         } else if (path.equals("/v2/checkout/orders")) {
             String id = "ORDER" + orders.incrementAndGet();
+
+            orderRequests.add(body);
 
             Matcher m = Pattern.compile("\"value\":\"([0-9.]+)\"").matcher(body);
 

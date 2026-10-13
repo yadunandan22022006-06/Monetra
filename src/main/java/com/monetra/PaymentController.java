@@ -262,6 +262,8 @@ public class PaymentController {
         rec.riskFlags = flags.isEmpty() ? null : String.join(" | ", flags);
         rec.homeExpenseId = homeExpenseId;
         rec.homeDueDate = homeDueDate;
+        rec.heType = HeController.type(body.get("heType"));
+        rec.heMethod = rec.heType == null ? null : HeController.digitalMethod(body.get("heMethod"));
         rec.amountInr = amountInr;
         rec.amountUsd = amountUsd;
         rec.status = "CREATED";
@@ -285,6 +287,7 @@ public class PaymentController {
             context.put("brand_name", "Monetra");
             context.put("user_action", "PAY_NOW");
             context.put("shipping_preference", "NO_SHIPPING");
+
             context.put("return_url", base + "/?paypal=return&ref=" + rec.paymentId);
             context.put("cancel_url", base + "/?paypal=cancel&ref=" + rec.paymentId);
 
@@ -495,6 +498,11 @@ public class PaymentController {
         List<Map<String, Object>> out = new ArrayList<>();
 
         for (PaymentRecord rec : all) {
+            /* Home expense (HE) payments the user sent have their own history under HE. */
+            if (rec.heType != null && userId.equals(rec.userId)) {
+                continue;
+            }
+
             out.add(view(rec, userId));
         }
 
@@ -671,6 +679,8 @@ public class PaymentController {
             out.put("bankLast4", rec.bankLast4);
             out.put("riskFlags", rec.riskFlags);
             out.put("orderId", rec.orderId);
+            out.put("heType", rec.heType);
+            out.put("heMethod", rec.heMethod);
 
         } else {
             UserAccount sender = users.findById(rec.userId).orElse(null);

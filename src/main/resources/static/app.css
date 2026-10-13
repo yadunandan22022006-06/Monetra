@@ -745,6 +745,37 @@ body.auth-mode {
     line-height: 1.5;
 }
 
+/* the app's own question box, in place of the browser's confirm and prompt */
+
+.ask-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(2, 4, 20, 0.72);
+}
+
+.ask-card {
+    width: min(460px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 20px;
+    background: #0c1458;
+    border: 1px solid var(--gold);
+    border-radius: 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.ask-card p { margin: 0; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+
+.ask-card input { margin-top: 14px; }
+
+.ask-card .button-row { margin-top: 16px; }
+
+.ask-card .button-row button { padding: 12px 10px; }
+
 .notif-item.unread { border-color: var(--gold); background: var(--gold-soft); }
 
 /* hover states that keep the card look instead of a muddy tint */
@@ -1189,3 +1220,405 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 .review-actions .button-row { margin-top: 4px; }
 
 .review-actions .button-row button { padding: 12px 10px; }
+
+/* ==========================================================
+   FINANCIAL GUARDIAN: risk labels, home cards, payment alert
+   ========================================================== */
+
+:root { --alert-red: #ff5252; }
+
+.risk-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border: 1px solid var(--gold-line);
+    border-radius: 99px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.risk-chip.high { color: var(--red); border-color: rgba(255, 123, 107, 0.7); background: rgba(255, 123, 107, 0.1); }
+
+.risk-chip.medium { color: var(--amber); border-color: rgba(246, 184, 74, 0.7); background: rgba(246, 184, 74, 0.1); }
+
+.risk-chip.low { color: var(--green); border-color: rgba(95, 216, 154, 0.6); background: rgba(95, 216, 154, 0.08); }
+
+.risk-chip.overall { font-weight: 800; letter-spacing: 0.3px; }
+
+/* the three awareness cards on Home */
+
+.aware-grid { display: grid; gap: 10px; margin-top: 12px; }
+
+@media (min-width: 780px) { .aware-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.aware-card {
+    display: grid;
+    gap: 4px;
+    align-content: start;
+    padding: 12px 14px;
+    border: 1px solid rgba(242, 196, 92, 0.28);
+    border-radius: 18px;
+    background: rgba(5, 9, 40, 0.55);
+    color: var(--text);
+    font-weight: 400;
+    text-align: left;
+}
+
+.aware-card:hover { border-color: var(--gold); background: rgba(242, 196, 92, 0.08); }
+
+.aware-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.aware-title { display: inline-flex; align-items: center; gap: 8px; color: var(--gold); font-weight: 700; font-size: 15px; }
+
+.aware-title svg.i { width: 18px; height: 18px; }
+
+.aware-main { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+
+.aware-sub { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+
+.aware-sub:empty { display: none; }
+
+/* Guardian AI payment alert: one solid red box per warning */
+
+.guardian-alert { display: grid; gap: 8px; margin-top: 10px; }
+
+.guardian-alert:empty { display: none; }
+
+.impact-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.alert-title { margin-top: 2px; color: var(--alert-red); font-size: 13px; font-weight: 800; letter-spacing: 0.4px; }
+
+.alert-card {
+    padding: 10px 12px;
+    border: 2px solid var(--alert-red);
+    border-radius: 8px;
+    background: #060a2c;
+    color: #fff;
+}
+
+.alert-card-head { display: flex; align-items: center; gap: 8px; }
+
+.alert-badge { color: var(--alert-red); font-size: 19px; font-weight: 700; line-height: 1; }
+
+.alert-card-title { color: var(--alert-red); font-size: 13px; font-weight: 800; letter-spacing: 0.4px; }
+
+.alert-icon { margin-left: auto; color: var(--alert-red); font-size: 14px; }
+
+.alert-card p { margin: 6px 0 0; color: #fff; font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+
+.alert-options { margin: 0 2px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+.guardian-disclaimer { margin: 10px 2px 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+
+/* Go Back, Adjust Amount, Review Budget, Continue */
+
+.button-row.four { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+@media (min-width: 560px) { .button-row.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.review-actions .button-row.four button { padding: 11px 6px; font-size: 13.5px; }
+
+/* loans and goals */
+
+.loan-item > div, .goal-item > div { width: 100%; min-width: 0; }
+
+.loan-item .progress, .goal-item .progress { margin: 8px 0; }
+
+.goal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.goal-item .alert-box { margin-top: 8px; padding: 8px 12px; font-size: 13px; line-height: 1.45; }
+
+.cal-day {
+    display: grid;
+    justify-items: center;
+    min-width: 46px;
+    padding: 4px 6px;
+    border: 1px solid var(--gold-line);
+    border-radius: 10px;
+    color: var(--gold);
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.cal-day strong { color: var(--gold); font-size: 16px; }
+
+.cal-day.overdue { border-color: rgba(255, 123, 107, 0.7); color: var(--red); }
+
+.cal-day.overdue strong { color: var(--red); }
+
+#loanRiskText .alert-box, #loanForecast .alert-box { margin-top: 10px; padding: 9px 12px; font-size: 13px; line-height: 1.45; }
+
+#loanDash .stat .v, #loanForecast .stat .v { font-size: 15px; }
+
+/* ==========================================================
+   HE: HOME EXPENSES
+   ========================================================== */
+
+.he-btn {
+    margin-left: 4px;
+    padding: 8px 12px 8px 10px;
+    border-color: var(--gold-line);
+    background: transparent;
+    color: var(--gold);
+    box-shadow: none;
+}
+
+.he-btn:hover { background: var(--gold-soft); }
+
+.period-tabs.three { grid-template-columns: repeat(3, 1fr); }
+
+.period-tabs.three button { font-size: 12.5px; line-height: 1.3; }
+
+.he-emoji { font-size: 18px; line-height: 1; }
+
+.he-reminder {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(242, 196, 92, 0.14);
+}
+
+.he-reminder .check-row { align-items: center; margin: 0 0 10px; }
+
+.he-reminder .check-row input { margin-top: 0; }
+
+.he-reminder label { margin: 0 0 4px; font-size: 12px; }
+
+.he-reminder input[type="time"], .he-reminder input[type="date"], .he-reminder input[type="number"] { padding: 9px 10px; }
+
+@media (max-width: 460px) {
+    .he-reminder { grid-template-columns: 1fr 1fr; }
+    .he-reminder .check-row { grid-column: 1 / -1; margin-bottom: 0; }
+}
+
+@media (max-width: 420px) {
+    .guardian-btn { padding: 7px 9px 7px 8px; gap: 5px; font-size: 12px; }
+    .he-btn { margin-left: 2px; }
+    .logout-button { padding: 7px 10px; font-size: 12px; }
+    .topbar-right { gap: 6px; }
+}
+
+/* ==========================================================
+   APP LAYOUT: the page itself never scrolls.
+   The top bar, the screen's title and its tabs stay where they
+   are. One panel is on screen at a time, and only a panel that
+   holds a long list scrolls, inside itself.
+   ========================================================== */
+
+.dashboard-main { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 4px; }
+
+.dashboard-main > .footer-note { display: none; }
+
+.view-section.active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; width: 100%; }
+
+.view-section > * { flex: 0 0 auto; }
+
+.tab-host { display: flex; flex-direction: column; flex: 1 1 auto !important; min-height: 0; }
+
+.tab-host > * { flex: 0 0 auto; }
+
+.view-section > .tab-panel, .tab-host > .tab-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 2px 6px;
+    scrollbar-width: thin;
+    scrollbar-color: #2a3369 transparent;
+}
+
+.tab-panel > .card:first-child, .tab-panel > form.card:first-child { margin-top: 8px; }
+
+.tab-panel > .period-tabs:first-child { margin-top: 8px; }
+
+/* tabs inside a screen */
+
+.subtabs { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; scrollbar-width: none; }
+
+.subtabs::-webkit-scrollbar { display: none; }
+
+.subtabs button { flex: 1 0 auto; padding: 8px 12px; border-radius: 999px; font-size: 13px; white-space: nowrap; }
+
+.subtabs button.active { background: var(--gold); border-color: transparent; color: var(--ink); }
+
+.page-head { margin: 2px 0 4px; }
+
+.seg { margin-top: 4px; }
+
+/* forms: every field in a two-column grid, so a whole form fits on one screen */
+
+.tab-panel .two-col { gap: 0 10px; }
+
+.tab-panel .two-col .wide { grid-column: 1 / -1; }
+
+.tab-panel label { margin: 7px 0 3px; font-size: 12.5px; }
+
+.tab-panel form.card input:not([type="checkbox"]), .tab-panel form.card select { padding: 10px 12px; }
+
+/* a box with an icon or a ₹ in it keeps room for it, so what is typed never sits under the icon */
+
+.tab-panel .field input,
+.tab-panel form.card .field input:not([type="checkbox"]) { padding-left: 46px; }
+
+.tab-panel .field.has-prefix input,
+.tab-panel form.card .field.has-prefix input:not([type="checkbox"]) { padding-left: 42px; }
+
+.tab-panel form.card .field.has-prefix.wide input:not([type="checkbox"]) { padding-left: 52px; }
+
+.pay-row { grid-template-columns: 1fr 1.4fr; }
+
+@media (max-width: 460px) { .pay-row { grid-template-columns: 1fr 1.4fr; } }
+
+/* a shorter screen (most phones, small laptops): drop the explanations, keep the controls */
+
+@media (max-height: 900px), (max-width: 640px) {
+    .page-head p { display: none; }
+
+    .page-head h1 { font-size: 24px; }
+
+    #paymentView .page-head { display: none; }
+
+    .hero-top p { display: none; }
+
+    .hero-top .logo-circle { width: 44px; height: 44px; }
+
+    .hero-top h2 { font-size: 22px; margin: 0; }
+
+    .hero-card { gap: 8px; }
+
+    .card-sub { display: none; }
+
+    .tab-panel form.card > .hint, #sendPanel > .footer-note { display: none; }
+
+    .card { padding: 12px 14px; }
+
+    .card h2 { margin-bottom: 6px; font-size: 16.5px; }
+
+    .aware-card { padding: 9px 12px; gap: 2px; }
+
+    .tile { padding: 10px 12px; gap: 4px; }
+
+    .stat { padding: 8px 10px; }
+
+    .stat .v { font-size: 16px; }
+
+    .bottom-nav { height: 58px; margin: 4px auto calc(6px + env(safe-area-inset-bottom)); }
+
+    .topbar { padding: 6px 14px; }
+
+    .qr-box { width: min(190px, 52vw); }
+}
+
+/* ==========================================================
+   HE: six payment methods, and a history with details
+   ========================================================== */
+
+.method-tabs.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.method-tabs button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#heMethodHint { margin: 6px 2px 2px; }
+
+#heForm .scanner video { max-height: 220px; }
+
+.qr-box.small { width: min(170px, 46vw); margin: 4px auto 0; }
+
+#heQrBox .big-number { margin: 6px 0 0; font-size: 18px; }
+
+.he-row { display: block; padding: 0; }
+
+.he-row-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 16px;
+    background: transparent;
+    color: var(--text);
+    font-weight: 400;
+    text-align: left;
+}
+
+.he-row-main strong { display: block; overflow-wrap: anywhere; }
+
+.he-row-main small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+.he-details { display: grid; gap: 5px; padding: 8px 14px 12px; border-top: 1px solid rgba(242, 196, 92, 0.16); }
+
+.detail-line { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; line-height: 1.4; }
+
+.detail-line span { flex: 0 0 auto; color: var(--muted); }
+
+.detail-line strong { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+.he-details .small-button { justify-self: start; margin-top: 4px; }
+
+.badge.cancelled { color: var(--muted); border-color: rgba(184, 180, 200, 0.5); }
+
+/* forms keep their two columns on a phone too: that is what lets a whole form fit on the screen */
+
+.tab-panel .two-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+@media (max-height: 900px), (max-width: 640px) {
+    /* Home: the Send Money button, the three cards and the two tiles, all in view */
+
+    .hero-top { display: none; }
+
+    .hero-card { padding: 8px; }
+
+    .big-action { padding: 6px 14px 6px 6px; font-size: 17px; }
+
+    .aware-grid { gap: 6px; margin-top: 8px; }
+
+    .aware-main { font-size: 14px; }
+
+    .aware-sub { font-size: 12px; }
+
+    .tile-grid { gap: 8px; margin-top: 8px; }
+
+    .tile .tile-icon { display: none; }
+
+    .tile strong { font-size: 14.5px; }
+
+    .tab-panel form.card > button[type="submit"], .tab-panel .card > .btn-gold { margin-top: 10px; padding: 11px; }
+
+    .subtabs button { padding: 7px 10px; }
+
+    .he-reminder { padding: 4px 0; }
+}
+
+@media (max-height: 900px), (max-width: 640px) {
+    /* HE: the three options, the six methods and the form in one view */
+
+    #heForm > h2 { display: none; }
+
+    .he-emoji { display: none; }
+
+    .period-tabs.three button { padding: 9px 4px; }
+
+    #heMethods button { padding: 6px 4px; }
+
+    #heMethodHint { margin: 4px 2px 0; font-size: 11.5px; line-height: 1.4; }
+
+    #heScanMessage:empty { display: none; }
+
+    .qr-box.small { width: min(150px, 42vw); }
+
+    #receivePanel .qr-box { width: min(165px, 46vw); }
+
+    #receivePanel .big-number { margin: 6px 0 0; font-size: 18px; }
+}
+
+/* Home now has two tiles under the three cards: they share the row */
+
+.tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.tile { min-height: 0; }

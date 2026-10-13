@@ -27,6 +27,10 @@ class NumberGuardTest {
 		assertTrue(NumberGuard.agreesWithVerdict("This payment goes over your daily limit of ₹500 by ₹9,500.", true));
 		assertTrue(NumberGuard.agreesWithVerdict("You would exceed your daily limit. You may want to wait.", true));
 
+		/* Advice to get back inside the limit is not a claim that the payment fits. */
+		assertTrue(NumberGuard.agreesWithVerdict(
+				"This payment goes over your daily limit by ₹200. You could pay less to stay within your limit.", true));
+
 		assertFalse(NumberGuard.agreesWithVerdict("You're close to your daily limit, but you're still within it.", true));
 		assertFalse(NumberGuard.agreesWithVerdict("You are close to exceeding your daily spending limit of ₹500.", true));
 		assertFalse(NumberGuard.agreesWithVerdict("This is a large payment compared to your daily limit.", true));
@@ -41,6 +45,22 @@ class NumberGuardTest {
 
 		assertFalse(NumberGuard.agreesWithVerdict("You have exceeded your daily spending limit by ₹50.", false));
 		assertFalse(NumberGuard.agreesWithVerdict("This payment goes over your weekly limit.", false));
+	}
+
+	@Test
+	void aReplyThatDropsAnEmiWarningIsCaught() {
+		String facts = "After this payment only ₹3,000 of this month's budget is left, which is NOT enough for your EMIs "
+				+ "of ₹5,000 due in the next 30 days.";
+
+		assertTrue(NumberGuard.keepsWarnings(
+				"After this payment only ₹3,000 is left this month, which is not enough for your EMIs of ₹5,000.", facts));
+
+		assertFalse(NumberGuard.keepsWarnings("You're good to go with this payment.", facts));
+		assertFalse(NumberGuard.keepsWarnings("You'll have ₹3,000 left this month and EMIs of ₹5,000 coming up.", facts));
+		assertFalse(NumberGuard.keepsWarnings("You're good to go, though ₹3,000 is not enough for your EMIs.", facts));
+
+		/* With no warning in the facts there is nothing to drop. */
+		assertTrue(NumberGuard.keepsWarnings("You're good to go with this payment.", "This payment fits every spending limit you set."));
 	}
 
 	@Test

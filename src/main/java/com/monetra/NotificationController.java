@@ -19,10 +19,16 @@ public class NotificationController {
 
     private final NotificationRepository notifications;
     private final HomeExpenseService home;
+    private final GuardianAnalysisService guardian;
 
-    public NotificationController(NotificationRepository notifications, HomeExpenseService home) {
+    public NotificationController(
+            NotificationRepository notifications,
+            HomeExpenseService home,
+            GuardianAnalysisService guardian) {
+
         this.notifications = notifications;
         this.home = home;
+        this.guardian = guardian;
     }
 
     @GetMapping
@@ -39,6 +45,14 @@ public class NotificationController {
 
         } catch (RuntimeException e) {
             /* Reminders are a bonus: never break the notification list because of them. */
+        }
+
+        /* The same goes for the Guardian's own alerts: daily limit, EMIs, savings goals and HE reminders. */
+        try {
+            guardian.createNotifications(userId, java.time.LocalDate.now(), java.time.LocalTime.now());
+
+        } catch (RuntimeException e) {
+            /* Never break the notification list because of them. */
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

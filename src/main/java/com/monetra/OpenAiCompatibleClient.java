@@ -40,7 +40,7 @@ public class OpenAiCompatibleClient implements AiProvider {
     private static RestTemplate buildClient() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(60000);   /* a model on your own computer can be slow */
+        factory.setReadTimeout(120000);   /* a model on your own computer can be slow to load */
         return new RestTemplate(factory);
     }
 
@@ -50,9 +50,12 @@ public class OpenAiCompatibleClient implements AiProvider {
             return false;
         }
 
-        boolean local = baseUrl.contains("://localhost") || baseUrl.contains("://127.0.0.1");
+        return local() || (apiKey != null && !apiKey.isBlank());
+    }
 
-        return local || (apiKey != null && !apiKey.isBlank());
+    /** True when the AI runs on this computer (for example Ollama), so it needs no key and costs nothing to call. */
+    public boolean local() {
+        return baseUrl != null && (baseUrl.contains("://localhost") || baseUrl.contains("://127.0.0.1"));
     }
 
     @Override
