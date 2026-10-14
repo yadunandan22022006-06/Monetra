@@ -45,7 +45,8 @@ const PARENT_VIEW = {
     notifView: 'homeView',
     transactionView: 'homeView',
     guardianView: 'none',
-    heView: 'none'
+    heView: 'none',
+    bankView: 'homeView'
 };
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
@@ -699,6 +700,8 @@ async function openDashboard(profile) {
     clearInterval(pollTimer);
 
     pollTimer = setInterval(pollNotifications, POLL_MS);
+
+    startBankUpdates();
 }
 
 function closeDashboard(note) {
@@ -711,6 +714,10 @@ function closeDashboard(note) {
     stopScan();
 
     clearInterval(pollTimer);
+    clearTimeout(bankTimer);
+
+    bankAccounts = [];
+    bankChosen = null;
 
     $('dashboardPage').classList.add('hidden');
     $('authCard').classList.remove('hidden');
@@ -743,7 +750,7 @@ function closeDashboard(note) {
     resetPayForm();
 
     $('agentLog').replaceChildren(makeElement('div', 'bubble bot',
-        'Hi! Ask me something like “Can I afford ₹2,000 on shoes?” or “Prepare a payment of ₹800 to Ravi”.'));
+        'Ask about your money, or tap a question above.'));
 
     $('paymentResult').classList.add('hidden');
     $('heResult').classList.add('hidden');
@@ -844,6 +851,10 @@ function navigateTo(viewId, action) {
 
     if (viewId === 'guardianView') {
         loadGuardian();
+    }
+
+    if (viewId === 'bankView') {
+        loadBank();
     }
 
     if (viewId === 'heView') {
@@ -1017,7 +1028,7 @@ function renderReceived() {
     renderRecords(
         'receivedList',
         payments.filter(p => p.direction === 'RECEIVED' && p.status === 'COMPLETED').slice(0, 10),
-        'No money received yet. Share your QR code or mobile number.',
+        'No money received yet.',
         p => activityRow({
             kind: 'RECEIVED',
             title: 'From ' + p.counterparty,
@@ -1270,7 +1281,7 @@ async function loadContacts(box) {
             list.appendChild(makeElement('div', 'empty-state', query.text
                 ? (query.number ? 'No contact has that number. Keep typing the full mobile number.'
                     : 'No contact has that name. Type the mobile number instead.')
-                : 'No contacts yet. Add your phone contacts above, or pay someone and they appear here.'));
+                : 'No contacts yet.'));
         }
 
         found.forEach(c => {
@@ -1966,23 +1977,86 @@ function riskChip(text, level) {
     return makeElement('span', 'risk-chip ' + (RISK_CLASS[level] || 'unknown'), text);
 }
 
+/* One numbered red box: what is wrong, and what the user could do about it. */
+
+function alertBox(index, title, text, action) {
+    const item = makeElement('div', 'alert-card');
+
+    const head = makeElement('div', 'alert-card-head');
+
+    /* ①, ②, ③ ... */
+    head.appendChild(makeElement('span', 'alert-badge', String.fromCharCode(0x2460 + Math.min(index, 19))));
+    head.appendChild(makeElement('span', 'alert-card-title', title));
+    head.appendChild(makeElement('span', 'alert-icon', '⚠'));
+
+    item.appendChild(head);
+
+    const body = makeElement('p', '', text);
+
+    item.appendChild(body);
+
+    if (action) {
+        item.appendChild(makeElement('p', 'alert-action', '👉 ' + action));
+    }
+
+    return { item, body };
+}
+
+/* The Fraud Guard's reasons, as one more red box, with the tick the user needs to give to continue. */
+
+function fraudBox(index, risk) {
+    const fraud = alertBox(index, 'FRAUD GUARD', 'Please check this payment.', '');
+
+    const list = makeElement('ul', 'alert-list');
+
+    safeArray(risk.flags).forEach(text => list.appendChild(makeElement('li', '', text)));
+
+    fraud.item.appendChild(list);
+
+    const label = makeElement('label', 'check-row');
+
+    const tick = document.createElement('input');
+
+    tick.type = 'checkbox';
+    tick.id = 'riskConfirm';
+
+    tick.addEventListener('change', () => {
+        $('continuePaypal').disabled = !tick.checked;
+    });
+
+    label.appendChild(tick);
+    label.appendChild(document.createTextNode('I know this recipient and want to continue with this payment.'));
+
+    fraud.item.appendChild(label);
+
+    return fraud.item;
+}
+
+/* The server asked for the Fraud Guard to be confirmed after all (it checks again when the order is made). */
+
+function showFraudBox(risk) {
+    const box = $('reviewFraud');
+
+    box.replaceChildren();
+
+    if (risk.flagged && !$('riskConfirm')) {
+        box.appendChild(fraudBox(document.querySelectorAll('#reviewGuardian .alert-card').length, risk));
+    }
+}
+
 /*
- * Guardian AI on the review screen. The server works out the risk in each area (daily budget,
- * EMIs, savings goal); this shows it as a short summary and one red box per warning that applies.
- * Returns true when there is at least one warning.
+ * Guardian AI on the review screen. When anything needs a warning, everything the user should know
+ * is one numbered red box each, shown once: what the server found, the limits, the Fraud Guard, and
+ * last YOUR DECISION, where the AI's advice goes. Returns that box's text, or null when nothing
+ * needs a warning (then the review shows plain green notes instead).
  */
 
-function renderGuardianReview(guardian) {
+function renderGuardianReview(guardian, extras, risk) {
     const box = $('reviewGuardian');
 
     box.replaceChildren();
 
-    if (!guardian) {
-        return false;
-    }
-
-    const impacts = safeArray(guardian.impacts);
-    const cards = safeArray(guardian.cards);
+    const impacts = safeArray(guardian && guardian.impacts);
 
     if (impacts.length) {
         const strip = makeElement('div', 'impact-strip');
@@ -1996,35 +2070,51 @@ function renderGuardianReview(guardian) {
         box.appendChild(strip);
     }
 
-    if (!cards.length) {
-        return false;
+    /* The server's boxes. Its decision box always goes last, and no box is ever shown twice. */
+
+    const seen = new Set();
+    const items = [];
+
+    let decision = null;
+
+    safeArray(guardian && guardian.cards).forEach(card => {
+        if (card.title === 'YOUR DECISION') {
+            decision = card;
+            return;
+        }
+
+        const key = card.title + '|' + card.text;
+
+        if (!seen.has(key)) {
+            seen.add(key);
+            items.push(card);
+        }
+    });
+
+    const flagged = !!(risk && risk.flagged);
+
+    if (!items.length && !flagged && !extras.some(e => e.warn)) {
+        return null;
     }
+
+    extras.forEach(e => items.push(e));
 
     box.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
 
-    cards.forEach((card, index) => {
-        const item = makeElement('div', 'alert-card');
+    let n = 0;
 
-        const head = makeElement('div', 'alert-card-head');
+    items.forEach(card => box.appendChild(alertBox(n++, card.title, card.text, card.action).item));
 
-        /* ①, ②, ③ ... */
-        head.appendChild(makeElement('span', 'alert-badge', String.fromCharCode(0x2460 + Math.min(index, 19))));
-        head.appendChild(makeElement('span', 'alert-card-title', card.title));
-        head.appendChild(makeElement('span', 'alert-icon', '⚠'));
-
-        item.appendChild(head);
-        item.appendChild(makeElement('p', '', card.text));
-
-        box.appendChild(item);
-    });
-
-    const options = safeArray(guardian.options);
-
-    if (options.length) {
-        box.appendChild(makeElement('p', 'alert-options', 'You could: ' + options.join(' ')));
+    if (flagged) {
+        box.appendChild(fraudBox(n++, risk));
     }
 
-    return true;
+    const last = alertBox(n, 'YOUR DECISION',
+        decision ? decision.text : 'Review the payment and decide whether to continue.', '');
+
+    box.appendChild(last.item);
+
+    return last.body;
 }
 
 async function startReview() {
@@ -2061,11 +2151,30 @@ async function startReview() {
     const guardian = check.guardian || {};
     const lines = budgetLines(check);
 
+    /* What the limits say, and what is fine. With a warning these become red boxes too; without one, green notes. */
+
+    const extras = [];
+
+    if (!safeArray(check.periods).length) {
+        extras.push({
+            title: 'SPENDING LIMITS',
+            text: 'No spending limit is set, so Monetra cannot check this payment against a budget.',
+            action: 'Set one in Spending.'
+        });
+
+    } else if (lines.length) {
+        extras.push({ title: 'SPENDING LIMITS', text: lines.map(l => l.text).join(' '), warn: lines.some(l => l.warn) });
+    }
+
+    safeArray(guardian.notes).forEach(text => extras.push({ title: 'GOOD TO KNOW', text }));
+
     $('paymentForm').classList.add('hidden');
     $('reviewPanel').classList.remove('hidden');
 
-    const alerting = renderGuardianReview(guardian);
-    const warn = alerting || lines.some(l => l.warn) || risk.flagged;
+    $('reviewFraud').replaceChildren();
+
+    const decisionText = renderGuardianReview(guardian, extras, risk);
+    const warn = !!decisionText;
 
     const continueButton = $('continuePaypal');
 
@@ -2092,87 +2201,35 @@ async function startReview() {
         usd(draft.amountInr / rateInfo.inrPerUsd) + ' @ ₹' + rateInfo.inrPerUsd + '/$'
     ));
 
-    summary.appendChild(statBox(
-        'Left today after this',
-        daily ? money(daily.remainingAfter) : 'No daily limit set',
-        daily ? (Number(daily.remainingAfter) < 0 ? 'var(--red)' : 'var(--green)') : ''
-    ));
+    /* A broken daily limit is already in a red box, so it is not said again here. */
 
-    /* What is fine, and what could not be checked. Warnings are in the red boxes above. */
+    if (daily && daily.level !== 'over') {
+        summary.appendChild(statBox('Left today after this', money(daily.remainingAfter), 'var(--green)'));
+    }
+
+    /* Without a warning: plain notes. */
 
     const rules = $('reviewRules');
 
     rules.replaceChildren();
 
-    if (!safeArray(check.periods).length) {
-        rules.appendChild(makeElement('div', 'alert-box',
-            'ℹ️ No spending limit is set, so Monetra cannot check this payment against a budget. ' +
-            'Set one in Spending.'));
+    if (!warn) {
+        extras.forEach(e => rules.appendChild(makeElement(
+            'div',
+            'alert-box ' + (e.title === 'GOOD TO KNOW' || e.action ? '' : 'good-box'),
+            (e.title === 'GOOD TO KNOW' ? '🛡️ ' : e.action ? 'ℹ️ ' : '✅ ') + e.text + (e.action ? ' ' + e.action : '')
+        )));
     }
 
-    lines.forEach(l => rules.appendChild(makeElement(
-        'div',
-        'alert-box ' + (l.warn ? 'warn-box' : 'good-box'),
-        (l.warn ? '⚠️ ' : '✅ ') + l.text
-    )));
-
-    safeArray(guardian.notes).forEach(text => rules.appendChild(makeElement('div', 'alert-box', '🛡️ ' + text)));
-
-    safeArray(guardian.missing).forEach(text => rules.appendChild(makeElement('div', 'alert-box', 'ℹ️ ' + text)));
-
-    showFraudBox(risk);
-
-    requestAiAdvice(alerting, run);
+    requestAiAdvice(decisionText, run);
 }
 
-function showFraudBox(risk) {
-    const box = $('reviewFraud');
+/* The AI's advice. With a warning it goes in the YOUR DECISION box; the boxes above never depend on it. */
 
-    box.replaceChildren();
-
-    if (!risk.flagged) {
-        return;
-    }
-
-    const warn = makeElement('div', 'alert-box warn-box');
-
-    warn.appendChild(makeElement('strong', '', '🛡️ Fraud Guard: please check this payment'));
-
-    const list = makeElement('ul');
-
-    list.style.margin = '8px 0 0';
-    list.style.paddingLeft = '20px';
-
-    safeArray(risk.flags).forEach(text => list.appendChild(makeElement('li', '', text)));
-
-    warn.appendChild(list);
-
-    const label = makeElement('label', 'check-row');
-
-    const box1 = document.createElement('input');
-
-    box1.type = 'checkbox';
-    box1.id = 'riskConfirm';
-
-    box1.addEventListener('change', () => {
-        $('continuePaypal').disabled = !box1.checked;
-    });
-
-    label.appendChild(box1);
-    label.appendChild(document.createTextNode(
-        'I know this recipient and want to continue with this payment.'));
-
-    warn.appendChild(label);
-
-    box.appendChild(warn);
-}
-
-/* The AI puts the Guardian's findings into friendly words. The boxes above never depend on it. */
-
-async function requestAiAdvice(alerting, run) {
+async function requestAiAdvice(decisionText, run) {
     const box = $('reviewAi');
 
-    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its notice...');
+    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its advice...');
 
     box.replaceChildren(waiting);
 
@@ -2189,11 +2246,19 @@ async function requestAiAdvice(alerting, run) {
             return;
         }
 
-        box.replaceChildren(makeElement('div', 'alert-box' + (alerting ? ' warn-box' : ''),
-            '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 700)));
+        const advice = '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+
+        if (decisionText) {
+            decisionText.textContent = advice;
+
+            box.replaceChildren();
+
+        } else {
+            box.replaceChildren(makeElement('div', 'alert-box good-box', advice));
+        }
 
     } catch (error) {
-        /* No AI notice: everything it would say is already shown above. */
+        /* No AI advice: everything it would say is already shown above. */
 
         if (run === reviewRun) {
             box.replaceChildren();
@@ -2526,11 +2591,10 @@ function renderHistory() {
     renderRecords('historyList', shown, 'No transactions yet.', activityRow);
 
     renderRecords('homeActivity', all.slice(0, 4),
-        'Nothing yet. Send money or share your QR code to get started.', activityRow);
+        'No activity yet.', activityRow);
 
     $('historyNote').textContent =
-        'Sent and received payments come from the Monetra server after PayPal confirms them. ' +
-        'Recorded expenses are entered by you.';
+        'Payments appear after PayPal confirms them.';
 }
 
 document.querySelectorAll('#historyFilters .chip').forEach(chip => {
@@ -2548,7 +2612,7 @@ document.querySelectorAll('#historyFilters .chip').forEach(chip => {
 function renderPaymentStatus() {
     const sent = payments.filter(p => p.direction === 'SENT').slice(0, 5);
 
-    renderRecords('paypalStatus', sent, 'No PayPal payments yet. Send money to create one.', p => {
+    renderRecords('paypalStatus', sent, 'No PayPal payments yet.', p => {
         const row = makeElement('div', 'record-item');
 
         const left = makeElement('div');
@@ -2615,7 +2679,7 @@ $('refreshPaypalButton').addEventListener('click', loadPayments);
 function renderFraud() {
     const flagged = payments.filter(p => p.direction === 'SENT' && p.riskFlags);
 
-    renderRecords('fraudList', flagged, 'No payments have needed confirmation. You are all clear 🎉', p => {
+    renderRecords('fraudList', flagged, 'All clear. 🎉', p => {
         const row = makeElement('div', 'record-item');
 
         const left = makeElement('div');
@@ -3004,7 +3068,7 @@ $('forecastExplain').addEventListener('click', async function() {
     } catch (error) {
         box.replaceChildren(
             makeElement('div', 'alert-box', '🛡️ ' + forecastText(forecast)),
-            makeElement('div', 'footer-note', 'The AI explanation is not available right now, so this summary uses Monetra\'s rules.')
+            makeElement('div', 'footer-note', 'AI is not available right now: this uses Monetra\'s rules.')
         );
 
     } finally {
@@ -3348,7 +3412,7 @@ function updateLoans() {
 
     renderLoanPlan();
 
-    renderRecords('loansList', records.loans, 'No loans or EMI reminders added yet.', loan => {
+    renderRecords('loansList', records.loans, 'No loans yet.', loan => {
         const closed = loan.status === 'CLOSED';
         const overdue = !closed && loan.due < today();
         const dueToday = !closed && loan.due === today();
@@ -3612,7 +3676,7 @@ function goalFigures(goal) {
 }
 
 function updateGoals() {
-    renderRecords('goalsList', records.goals, 'No savings goals created yet. Once you add a goal, it will appear here to track your progress.', goal => {
+    renderRecords('goalsList', records.goals, 'No goals yet.', goal => {
         const pct = Math.min(100, goal.target > 0 ? (goal.saved / goal.target) * 100 : 0);
         const figures = goalFigures(goal);
         const reached = Number(goal.saved) >= Number(goal.target);
@@ -3746,12 +3810,12 @@ function renderAwareness() {
             ? money(daily.overBy) + ' over today\'s limit of ' + money(daily.limit)
             : money(daily.remaining) + ' left of ' + money(daily.limit) + ' today';
 
-        $('awareDailySub').textContent = 'Spent today ' + money(daily.spentToday) + ' • ' + daily.percentUsed + '% of your daily limit used';
+        $('awareDailySub').textContent = 'Spent ' + money(daily.spentToday) + ' • ' + daily.percentUsed + '% used';
 
     } else {
         setChip('awareDailyChip', 'No limit set', 'UNKNOWN');
 
-        $('awareDailyMain').textContent = 'Set a daily limit to see what is left today.';
+        $('awareDailyMain').textContent = 'Set a daily limit.';
         $('awareDailySub').textContent = daily ? 'Spent today ' + money(daily.spentToday) : '';
     }
 
@@ -3772,7 +3836,7 @@ function renderAwareness() {
     } else {
         setChip('awareLoansChip', 'No loans', 'UNKNOWN');
 
-        $('awareLoansMain').textContent = 'Add a loan to see your EMIs and reminders.';
+        $('awareLoansMain').textContent = 'Add a loan to track EMIs.';
         $('awareLoansSub').textContent = '';
     }
 
@@ -3801,6 +3865,7 @@ function renderAwareness() {
         $('awareGoalsSub').textContent = '';
     }
 
+    renderSafeToSpend();
     renderLoanGuardian();
     renderLoanPlan();
     updateGoals();
@@ -3883,13 +3948,13 @@ $('moneyForm').addEventListener('submit', function(event) {
 function updateTiles() {
     $('tileForecast').textContent = forecast
         ? forecastText(forecast).split('. ')[0].replace(/\.$/, '') + '.'
-        : 'See where this month is heading.';
+        : "This month's pace.";
 
     const flagged = payments.filter(p => p.direction === 'SENT' && p.riskFlags).length;
 
     $('tileFraud').textContent = flagged
         ? flagged + ' payment' + (flagged > 1 ? 's' : '') + ' needed your confirmation'
-        : 'All clear. Every payment is checked first.';
+        : 'Every payment checked.';
 }
 
 function renderWeekBars() {
@@ -3945,6 +4010,7 @@ function renderAll() {
     renderFraud();
     updateTiles();
     renderNotifySettings();
+    renderPlanTracking();
 
     if (currentView === 'paymentView' && !$('receivePanel').classList.contains('hidden')) {
         renderReceived();
@@ -4157,8 +4223,7 @@ $('agentForm').addEventListener('submit', async function(event) {
         wait.remove();
 
         addBubble('bot', error.status === 503
-            ? 'The AI is not set up on this server yet. Whoever runs Monetra can switch it on for free ' +
-              '(see "Free AI" in the README: Google Gemini, Groq or Ollama). Everything else still works.'
+            ? 'The AI is off on this server. Everything else still works.'
             : 'Sorry, I could not answer that: ' + error.message);
 
     } finally {
@@ -4191,8 +4256,8 @@ function renderPaypalSystem() {
     }
 
     $('paypalEmailHint').textContent = me.paypalEmail
-        ? 'Money people send you is paid out to ' + me.paypalEmail + ' by PayPal Payouts.'
-        : 'Add your PayPal Sandbox email so the money people send you is paid out to your PayPal account.';
+        ? 'Paid out to ' + me.paypalEmail + '.'
+        : 'Add your PayPal Sandbox email to get paid.';
 
     const wrap = $('paymentTable');
 
@@ -4201,7 +4266,7 @@ function renderPaypalSystem() {
     const rows = payments.slice(0, 10);
 
     if (!rows.length) {
-        wrap.appendChild(makeElement('div', 'empty-state', 'No payments yet. Send money or share your QR code.'));
+        wrap.appendChild(makeElement('div', 'empty-state', 'No payments yet.'));
         return;
     }
 
@@ -4358,7 +4423,7 @@ function renderHome() {
     }
 
     renderRecords('homeDue', safeArray(homeData.due),
-        'Nothing to do. You are all caught up. 🎉', row => {
+        'All caught up. 🎉', row => {
 
         const item = makeElement('div', 'record-item');
 
@@ -4402,7 +4467,7 @@ function renderHome() {
 
     renderHomeReport();
 
-    renderRecords('homeAll', safeArray(homeData.expenses), 'No household expenses yet. Add one above.', e => {
+    renderRecords('homeAll', safeArray(homeData.expenses), 'No home expenses yet.', e => {
         const card = recordCard(
             e.name,
             money(e.amount) + ' • ' + String(e.frequency).toLowerCase() + ' from ' + displayDate(e.startDate) + ' • ' + e.category,
@@ -4649,11 +4714,11 @@ const HE_STATUS = {
 /* Used until the server says what each method really does with its payment provider. */
 
 const HE_DEFAULT_HOW = {
-    SCAN: 'Scan a Monetra or UPI QR code. You approve the payment on PayPal.',
-    MYQR: 'Your own Monetra QR code. Anyone can scan it to pay you.',
-    MOBILE: 'Pay by mobile number. The name is shown before you pay, and you approve the payment on PayPal.',
-    BANK: 'Make the transfer in your bank\'s app, then record it here. Monetra does not start bank transfers.',
-    CASH: 'Record a home expense you paid in cash. No money is moved.'
+    SCAN: 'Scan a QR code. You approve on PayPal.',
+    MYQR: 'Your QR code, for others to pay you.',
+    MOBILE: 'Pay a mobile number. You approve on PayPal.',
+    BANK: 'Monetra does not start bank transfers. Pay in your bank\'s app, then record it here.',
+    CASH: 'Record cash you paid. No money moves.'
 };
 
 let heMethod = 'MOBILE';
@@ -4736,7 +4801,7 @@ function renderHeForm() {
     button.disabled = heBusy || (!!info && info.available === false);
 
     if (heMethod === 'SCAN' && !$('heScanMessage').textContent) {
-        $('heScanMessage').textContent = 'Point the camera at a Monetra or UPI QR code. The name is detected for you.';
+        $('heScanMessage').textContent = 'Point the camera at a QR code.';
     }
 
     if (heMethod === 'MYQR') {
@@ -5003,7 +5068,7 @@ function heDetailLine(label, value) {
 }
 
 function renderHeHistory() {
-    renderRecords('heHistory', heHistory, 'No home expense payments yet. Pay one and it appears here.', p => {
+    renderRecords('heHistory', heHistory, 'No payments yet.', p => {
         const status = HE_STATUS[p.status] || [STATUS_LABELS[p.status] || p.status, String(p.status).toLowerCase()];
         const open = heOpenRow === p.id;
 
@@ -5239,10 +5304,11 @@ async function startHePaypalPayment(amount, description, label) {
     safeArray(risk.flags).forEach(flag => warnings.push('• FRAUD GUARD: ' + flag));
 
     const question = (warnings.length ? 'GUARDIAN AI — PAYMENT ALERT\n\n' + warnings.join('\n\n') + '\n\n' : '') +
-        'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings.length ? ' anyway?' : '?') +
-        '\n\nNothing is charged until you approve it on PayPal and Monetra\'s server confirms it.';
+        'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings.length ? ' anyway?' : '?');
 
-    if (!await askConfirm(question, 'Continue to PayPal', 'Go Back')) {
+    /* "Pay" starts the payment exactly as before; "Go Back" closes the box and nothing is started. */
+
+    if (!await askConfirm(question, 'Pay', 'Go Back')) {
         return 'Payment not started.';
     }
 
@@ -5372,6 +5438,9 @@ async function init() {
 
     const returning = !!params.get('paypal');
 
+    /* Back from Setu's consent screens. */
+    const bankReturn = params.get('bank') === 'return';
+
     /* The server session tells us who is logged in, even after a refresh. */
 
     let profile = null;
@@ -5383,8 +5452,8 @@ async function init() {
         profile = null;
     }
 
-    if (returning) {
-        /* Remove the PayPal parameters so a refresh cannot repeat the request. */
+    if (returning || bankReturn) {
+        /* Remove the PayPal or Setu parameters so a refresh cannot repeat the request. */
 
         history.replaceState(null, '', location.pathname);
     }
@@ -5401,6 +5470,922 @@ async function init() {
 
     if (returning) {
         await handlePaypalReturn(params);
+    }
+
+    if (bankReturn) {
+        await handleBankReturn();
+    }
+}
+
+/* ==============================
+   SAFE TO SPEND TODAY (Home)
+   Worked out by the server from the user's own balance, after everything
+   that has to be paid before the next income.
+================================ */
+
+function openMyMoney() {
+    navigateTo('spendingView');
+
+    showSubtab('spending', 'money');
+}
+
+function renderSafeToSpend() {
+    const s = overview && overview.safeToSpend;
+    const amount = $('safeAmount');
+
+    if (!s || !s.known) {
+        amount.textContent = '—';
+        amount.className = 'safe-amount unknown';
+
+        $('safeText').textContent = s && s.text ? s.text : 'Add your balance and income day in Spending, under My money.';
+        $('safeSub').textContent = '';
+        return;
+    }
+
+    amount.textContent = money(s.amount);
+    amount.className = 'safe-amount ' + (RISK_CLASS[s.status] || 'low');
+
+    /* The amount is shown once, in big. The lines under it say what is protected, and until when. */
+
+    const over = s.status === 'HIGH';
+
+    $('safeText').textContent = over
+        ? s.text
+        : 'EMIs, bills, essentials and savings kept aside ' + s.until + '.';
+
+    $('safeSub').textContent = 'Balance ' + money(s.balance) + ' • Protected ' + money(s.protected) +
+        (!over && Number(s.spentToday) > 0 ? ' • Spent today ' + money(s.spentToday) : '');
+}
+
+/* ==============================
+   SMART BUY PLANNER (Savings)
+   "When can I buy it?" The server follows the user's money day by day
+   and finds the first safe day. Nothing is bought or moved.
+================================ */
+
+let planRun = 0;
+
+$('planForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+
+    const message = $('planMessage');
+
+    const request = {
+        item: $('planItem').value.trim(),
+        priceInr: $('planPrice').value,
+        wantedDate: $('planDate').value,
+        savingMonthly: $('planSaving').value
+    };
+
+    if (!request.item || !(Number(request.priceInr) > 0)) {
+        message.textContent = 'Enter what you want to buy and its price.';
+        return;
+    }
+
+    const run = ++planRun;
+
+    message.textContent = 'Working out your plan...';
+
+    $('planSubmit').disabled = true;
+
+    try {
+        const plan = await postJson('/api/guardian/buy-plan', request, 15000);
+
+        if (run !== planRun) {
+            return;
+        }
+
+        message.textContent = '';
+
+        renderPlan({ ...plan, priority: $('planPriority').value, request }, run);
+
+    } catch (error) {
+        message.textContent = error.message;
+
+    } finally {
+        $('planSubmit').disabled = false;
+    }
+});
+
+function showPlanForm() {
+    planRun++;
+
+    $('planResult').classList.add('hidden');
+    $('planForm').classList.remove('hidden');
+
+    renderPlanTracking();
+}
+
+/* The plan's own sentences that are not already shown as a number above them. */
+
+function planNotes(plan) {
+    return safeArray(plan.lines).filter(line =>
+        !line.startsWith('You want to buy') &&
+        !line.startsWith('Buying it today is NOT safe') &&
+        !line.startsWith('To buy it on') &&
+        !line.startsWith('You can buy it today') &&
+        !(line.startsWith('The earliest safe day') && plan.safeDate === plan.estimatedDate));
+}
+
+function renderPlan(plan, run) {
+    const box = $('planResult');
+
+    box.replaceChildren();
+
+    box.appendChild(makeElement('h2', '', (plan.item || 'Your purchase') + ' • ' + money(plan.price)));
+
+    const buttons = makeElement('div', 'button-row');
+
+    const change = makeElement('button', '', 'Change details');
+
+    change.type = 'button';
+    change.addEventListener('click', showPlanForm);
+
+    buttons.appendChild(change);
+
+    if (!plan.ready) {
+        box.appendChild(makeElement('div', 'alert-box', 'ℹ️ ' + safeArray(plan.lines).join(' ')));
+
+        const open = makeElement('button', 'btn-gold', 'Open My money');
+
+        open.type = 'button';
+        open.addEventListener('click', openMyMoney);
+
+        buttons.appendChild(open);
+        box.appendChild(buttons);
+
+        $('planForm').classList.add('hidden');
+        box.classList.remove('hidden');
+        return;
+    }
+
+    const status = plan.buyToday
+        ? ['✅ Safe to buy today', 'good']
+        : plan.estimatedDate
+            ? ['⛔ Not safe to buy today', 'bad']
+            : ['⏳ No safe day in the next 12 months', 'bad'];
+
+    box.appendChild(makeElement('div', 'plan-status ' + status[1], status[0]));
+
+    const stats = makeElement('div', 'stat-grid');
+
+    if (plan.buyToday) {
+        stats.appendChild(statBox('Free to use now', money(plan.freeNow)));
+        stats.appendChild(statBox('Lowest balance after', money(plan.lowestAfter)));
+
+    } else if (plan.estimatedDate) {
+        stats.appendChild(statBox('Buy it on', displayDate(plan.estimatedDate), 'var(--green)'));
+        stats.appendChild(statBox('Wait', plan.daysToWait + (plan.daysToWait === 1 ? ' day' : ' days')));
+        stats.appendChild(statBox('Save a day', money(plan.perDay)));
+
+        /* A month's figure only for a wait of a month or more, a week's for a week or more. */
+        stats.appendChild(plan.daysToWait >= 30 ? statBox('Save a month', money(plan.perMonth))
+            : plan.daysToWait >= 7 ? statBox('Save a week', money(plan.perWeek))
+                : statBox('In all', money(plan.needed)));
+
+    } else {
+        stats.appendChild(statBox('Free to use now', money(plan.freeNow)));
+        stats.appendChild(statBox('Free each month', plan.freeMonthly === null || plan.freeMonthly === undefined
+            ? 'Not known' : money(plan.freeMonthly)));
+    }
+
+    box.appendChild(stats);
+
+    /* Why not today, in a red box, with what to do. The AI's advice replaces that line when it comes. */
+
+    let adviceLine;
+
+    if (plan.warning) {
+        const why = plan.warning.replace(/^Buying it today is NOT safe:\s*/, '');
+
+        const red = alertBox(0, 'WHY NOT TODAY', why.charAt(0).toUpperCase() + why.slice(1), plan.recommendation);
+
+        box.appendChild(red.item);
+
+        adviceLine = red.item.querySelector('.alert-action');
+
+    } else {
+        adviceLine = makeElement('div', 'alert-box good-box', '✅ ' + plan.recommendation);
+
+        box.appendChild(adviceLine);
+    }
+
+    const notes = planNotes(plan);
+
+    if (notes.length) {
+        const list = makeElement('ul', 'plan-notes');
+
+        notes.forEach(text => list.appendChild(makeElement('li', '', text)));
+
+        box.appendChild(list);
+    }
+
+    if (!plan.buyToday && plan.estimatedDate) {
+        const track = makeElement('button', 'btn-gold', 'Track this plan');
+
+        track.type = 'button';
+        track.addEventListener('click', () => trackPlan(plan, track));
+
+        buttons.appendChild(track);
+    }
+
+    box.appendChild(buttons);
+
+    $('planForm').classList.add('hidden');
+    box.classList.remove('hidden');
+
+    renderPlanTracking();
+
+    explainPlan(plan, run, adviceLine);
+}
+
+async function explainPlan(plan, run, adviceLine) {
+    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its advice...');
+
+    adviceLine.after(waiting);
+
+    try {
+        const result = await postJson('/api/guardian/buy-plan/explain', plan.request, 90000);
+
+        if (run !== planRun) {
+            return;
+        }
+
+        adviceLine.textContent = (plan.warning ? '👉 ' : '') + '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+
+    } catch (error) {
+        /* No AI advice: the plan above is complete without it. */
+    }
+
+    waiting.remove();
+}
+
+/* "Track this plan": it becomes a savings goal, so its progress shows here and under My goals. */
+
+function trackPlan(plan, button) {
+    const name = (plan.item || 'Purchase').slice(0, 60);
+
+    /* The goal is what the plan says to put aside (part of the price is already free money), by the plan's date. */
+
+    const target = Number(plan.needed) || Number(plan.price);
+
+    if (records.goals.some(g => g.plan && g.name === name && g.targetDate === plan.estimatedDate)) {
+        showToast('You are already saving for "' + name + '".');
+        return;
+    }
+
+    records.goals.unshift({
+        id: Date.now(),
+        name,
+        target,
+        saved: 0,
+        targetDate: plan.estimatedDate,
+        monthly: plan.daysToWait >= 30 ? Number(plan.perMonth) || 0 : target,
+        priority: plan.priority || 'MEDIUM',
+        remindDay: 0,
+        createdDate: today(),
+        startSaved: 0,
+        plan: true
+    });
+
+    saveRecords();
+
+    renderAll();
+
+    button.disabled = true;
+    button.textContent = 'Tracking ✓';
+
+    showToast('"' + name + '" is now a goal: put aside ' + money(target) + ' by ' + displayDate(plan.estimatedDate) + '.');
+}
+
+function renderPlanTracking() {
+    const plans = records.goals.filter(g => g.plan);
+
+    /* Shown under the form. While a result is open it would only push the page into scrolling. */
+    $('planTracking').classList.toggle('hidden', !plans.length || !$('planResult').classList.contains('hidden'));
+
+    renderRecords('planList', plans, '', goal => {
+        const pct = Math.min(100, goal.target > 0 ? (Number(goal.saved) / Number(goal.target)) * 100 : 0);
+
+        const row = makeElement('div', 'record-item');
+
+        const info = makeElement('div', 'record-info');
+
+        info.appendChild(makeElement('strong', '', goal.name));
+
+        info.appendChild(makeElement('div', 'sub', money(goal.saved) + ' of ' + money(goal.target) + ' • ' +
+            Math.round(pct) + '%' + (goal.targetDate ? ' • buy on ' + displayDate(goal.targetDate) : '')));
+
+        const progress = makeElement('div', 'progress');
+        const bar = makeElement('div', 'progress-bar');
+
+        bar.style.width = pct + '%';
+
+        progress.appendChild(bar);
+        info.appendChild(progress);
+
+        row.appendChild(info);
+
+        if (pct < 100) {
+            const add = makeElement('button', 'small-button', 'Add savings');
+
+            add.type = 'button';
+            add.addEventListener('click', () => addGoalSavings(goal));
+
+            row.appendChild(add);
+
+        } else {
+            row.appendChild(makeElement('span', 'badge completed', 'Ready to buy'));
+        }
+
+        return row;
+    });
+}
+
+/* ==============================
+   SCAM SHIELD (Monetra Guardian)
+   The pasted message is checked by the server's rules. It is not saved,
+   and the AI only ever sees what the rules found, never the message.
+================================ */
+
+const SCAM_TITLES = {
+    PIN: 'ASKS FOR YOUR PIN',
+    OTP: 'ASKS FOR AN OTP',
+    REMOTE: 'SCREEN-SHARING APP',
+    ARREST: 'ARREST THREAT',
+    PASSWORD: 'ASKS FOR CARD OR LOGIN DETAILS',
+    RECEIVE: 'FAKE "RECEIVE MONEY"',
+    QR: 'QR CODE TRICK',
+    APK: 'APP FILE TO INSTALL',
+    ELECTRICITY: 'ELECTRICITY CUT THREAT',
+    KYC: 'ACCOUNT BLOCK THREAT',
+    PRIZE: 'PRIZE OR LOTTERY',
+    AUTHORITY: 'CLAIMS TO BE AN OFFICIAL',
+    JOB: 'EASY MONEY OFFER',
+    FAMILY: 'NEW NUMBER, NEEDS MONEY',
+    SHORT_LINK: 'HIDDEN LINK',
+    URGENT: 'PRESSURE TO ACT FAST',
+    LINK: 'LINK IN THE MESSAGE',
+    CALL: 'CALL THIS NUMBER'
+};
+
+let scamRun = 0;
+
+$('scamForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+
+    const text = $('scamText').value.trim();
+    const message = $('scamMessage');
+
+    if (!text) {
+        message.textContent = 'Paste the message you want to check.';
+        return;
+    }
+
+    const run = ++scamRun;
+
+    message.textContent = 'Checking...';
+
+    try {
+        const result = await postJson('/api/guardian/scam/check', { message: text }, 15000);
+
+        if (run !== scamRun) {
+            return;
+        }
+
+        message.textContent = '';
+
+        renderScam(result, text, run);
+
+    } catch (error) {
+        message.textContent = error.message;
+    }
+});
+
+/* The message with the words that gave it away marked. Built from text only: nothing in it is ever run as HTML. */
+
+function markedMessage(text, phrases) {
+    const box = makeElement('div', 'scam-text');
+    const lower = text.toLowerCase();
+
+    const marks = [];
+
+    safeArray(phrases).forEach(phrase => {
+        const needle = String(phrase).toLowerCase();
+
+        if (!needle) {
+            return;
+        }
+
+        for (let i = lower.indexOf(needle); i >= 0; i = lower.indexOf(needle, i + needle.length)) {
+            marks.push([i, i + needle.length]);
+        }
+    });
+
+    marks.sort((a, b) => a[0] - b[0]);
+
+    let at = 0;
+
+    marks.forEach(([start, end]) => {
+        if (start < at) {
+            return;
+        }
+
+        box.appendChild(document.createTextNode(text.slice(at, start)));
+        box.appendChild(makeElement('mark', '', text.slice(start, end)));
+
+        at = end;
+    });
+
+    box.appendChild(document.createTextNode(text.slice(at)));
+
+    return box;
+}
+
+function renderScam(result, text, run) {
+    const box = $('scamResult');
+
+    box.replaceChildren();
+
+    const head = makeElement('div', 'card-head');
+
+    head.appendChild(makeElement('h2', '', 'Scam Shield result'));
+    head.appendChild(riskChip('Risk: ' + result.level, result.level));
+
+    box.appendChild(head);
+
+    const risky = result.level !== 'LOW';
+
+    box.appendChild(makeElement('div', 'plan-status ' + (result.level === 'HIGH' ? 'bad' : risky ? 'warn' : 'good'),
+        (risky ? '⚠️ ' : '✅ ') + 'Risk level: ' + result.level));
+
+    /* One numbered red box per reason, then what to do. The AI's explanation goes in that last box. */
+
+    let adviceText;
+
+    if (risky) {
+        let n = 0;
+
+        safeArray(result.reasons).forEach(reason => {
+            box.appendChild(alertBox(n++, SCAM_TITLES[reason.rule] || 'WARNING SIGN', reason.text, '').item);
+        });
+
+        const todo = alertBox(n, 'WHAT TO DO', result.recommendation, '');
+
+        box.appendChild(todo.item);
+
+        adviceText = todo.body;
+
+    } else {
+        adviceText = makeElement('div', 'alert-box good-box', result.reason + ' ' + result.recommendation);
+
+        box.appendChild(adviceText);
+    }
+
+    if (safeArray(result.phrases).length) {
+        box.appendChild(makeElement('label', '', 'Words that gave it away'));
+        box.appendChild(markedMessage(text, result.phrases));
+    }
+
+    box.appendChild(scamReportBox(result, text));
+
+    const again = makeElement('button', '', 'Check another message');
+
+    again.type = 'button';
+
+    again.addEventListener('click', () => {
+        scamRun++;
+
+        $('scamText').value = '';
+
+        box.classList.add('hidden');
+        $('scamForm').classList.remove('hidden');
+
+        $('scamText').focus();
+    });
+
+    const row = makeElement('div', 'button-row');
+
+    row.appendChild(again);
+    box.appendChild(row);
+
+    $('scamForm').classList.add('hidden');
+    box.classList.remove('hidden');
+
+    explainScam(text, run, adviceText);
+}
+
+async function explainScam(text, run, adviceText) {
+    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its explanation...');
+
+    adviceText.after(waiting);
+
+    try {
+        const result = await postJson('/api/guardian/scam/explain', { message: text }, 90000);
+
+        if (run === scamRun) {
+            adviceText.textContent = '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+        }
+
+    } catch (error) {
+        /* The rules' result above is complete without it. */
+    }
+
+    waiting.remove();
+}
+
+/* "Is this result wrong?" The message goes with the report only if the user ticks the box. */
+
+function scamReportBox(result, text) {
+    const wrap = makeElement('div', 'scam-report');
+
+    wrap.appendChild(makeElement('span', 'sub', 'Is this result wrong?'));
+
+    const share = makeElement('label', 'check-row');
+    const tick = document.createElement('input');
+
+    tick.type = 'checkbox';
+
+    share.appendChild(tick);
+    share.appendChild(document.createTextNode('Send the message with my report'));
+
+    const send = says => async () => {
+        try {
+            const saved = await postJson('/api/guardian/scam/report', {
+                level: result.level,
+                userSays: says,
+                rules: safeArray(result.reasons).map(r => r.rule),
+                shareMessage: tick.checked,
+                message: tick.checked ? text : ''
+            }, 10000);
+
+            wrap.replaceChildren(makeElement('span', 'sub', '✅ Thank you, your report was saved' +
+                (saved.messageKept ? ' with the message.' : '. The message was not kept.')));
+
+        } catch (error) {
+            showToast(error.message);
+        }
+    };
+
+    const buttons = makeElement('div', 'scam-report-buttons');
+
+    [['It is a scam', 'SCAM'], ['It is safe', 'SAFE']].forEach(([label, says]) => {
+        const b = makeElement('button', 'small-button', label);
+
+        b.type = 'button';
+        b.addEventListener('click', send(says));
+
+        buttons.appendChild(b);
+    });
+
+    wrap.appendChild(buttons);
+    wrap.appendChild(share);
+
+    return wrap;
+}
+
+/* ==============================
+   CHECK BALANCE (Setu Account Aggregator)
+   The server talks to Setu. The page only shows what the bank returned:
+   it never shows a balance the bank did not send.
+================================ */
+
+let bankAccounts = [];          /* the linked accounts, from the server */
+let bankChosen = null;          /* the account shown on the Check Balance screen */
+let bankBusy = false;
+let bankTimer = null;
+let bankRefreshMinutes = 60;
+
+function openCheckBalance() {
+    navigateTo('bankView');
+}
+
+/* "HDFC Bank • XXXX1234 (SAVINGS)" */
+
+function bankAccountLabel(a) {
+    return (a.bank || 'Your bank') + (a.maskedAccNumber ? ' • ' + a.maskedAccNumber : '') +
+        (a.accountType ? ' (' + a.accountType + ')' : '');
+}
+
+function setBankMessage(text, warn) {
+    const box = $('bankMessage');
+
+    box.textContent = text || '';
+    box.classList.toggle('warn', !!warn);
+}
+
+function renderBankAccounts() {
+    const select = $('bankAccountSelect');
+    const many = bankAccounts.length > 1;
+
+    select.replaceChildren();
+
+    bankAccounts.forEach(a => {
+        const option = document.createElement('option');
+
+        option.value = a.id;
+        option.textContent = bankAccountLabel(a) + (a.primary ? ' — main' : '');
+
+        select.appendChild(option);
+    });
+
+    if (!bankChosen || !bankAccounts.some(a => a.id === bankChosen)) {
+        const main = bankAccounts.find(a => a.primary) || bankAccounts[0];
+
+        bankChosen = main ? main.id : null;
+    }
+
+    select.value = bankChosen === null ? '' : String(bankChosen);
+
+    select.classList.toggle('hidden', !many);
+    $('bankAccountName').classList.toggle('hidden', many);
+
+    const chosen = bankAccounts.find(a => a.id === bankChosen);
+
+    $('bankAccountName').textContent = chosen ? bankAccountLabel(chosen) : 'No bank account linked';
+
+    $('bankLink').textContent = bankAccounts.length ? 'Link another account' : 'Link Bank Account';
+    $('bankPrimary').classList.toggle('hidden', !chosen || chosen.primary || !many);
+    $('bankRemove').classList.toggle('hidden', !chosen);
+    $('bankRefresh').disabled = bankBusy || !chosen;
+}
+
+/* Shows one account's balance exactly as the server returned it. */
+
+function renderBankBalance(result) {
+    bankAccounts = safeArray(result.accounts);
+
+    if (result.account) {
+        bankChosen = result.account.id;
+    }
+
+    renderBankAccounts();
+
+    const a = result.account;
+
+    $('bankBalance').textContent = a && a.balance !== null && a.balance !== undefined
+        ? money(a.balance)
+        : '—';
+
+    $('bankLastChecked').textContent = a && a.lastCheckedAt ? displayDateTime(a.lastCheckedAt) : 'Not yet';
+
+    $('bankBalance').classList.toggle('stale', !!result.stale);
+
+    if (result.state === 'OK') {
+        setBankMessage('');
+
+    } else if (result.stale) {
+        /* The last real balance stays on screen, marked as possibly out of date. */
+        setBankMessage('This may be out of date. ' + (result.message || ''), true);
+
+    } else {
+        setBankMessage(result.message || '', result.state !== 'NO_ACCOUNT');
+    }
+}
+
+/* Asks the server for the chosen account's balance. A new one is fetched from the bank only when allowed. */
+
+async function checkBankBalance(manual) {
+    if (bankBusy || !me.email) {
+        return;
+    }
+
+    bankBusy = true;
+
+    const shown = currentView === 'bankView';
+    const before = (bankAccounts.find(a => a.id === bankChosen) || {}).lastCheckedAt;
+
+    if (shown) {
+        $('bankRefresh').disabled = true;
+        $('bankRefresh').textContent = 'Checking...';
+        setBankMessage('Checking your balance...');
+    }
+
+    try {
+        const result = await postJson('/api/bank/balance', { accountId: bankChosen }, 60000);
+
+        if (typeof result.autoRefreshMinutes === 'number') {
+            bankRefreshMinutes = Math.max(5, result.autoRefreshMinutes);
+        }
+
+        if (currentView === 'bankView') {
+            renderBankBalance(result);
+
+            /* Pressed Refresh, but the bank allows one update an hour: say when the next one can be. */
+
+            const after = result.account && result.account.lastCheckedAt;
+
+            if (manual && result.state === 'OK' && after && after === before && result.nextUpdateAt) {
+                setBankMessage('The balance can be updated once an hour. Next update after ' +
+                    new Date(result.nextUpdateAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '.');
+            }
+
+        } else {
+            bankAccounts = safeArray(result.accounts);
+        }
+
+    } catch (error) {
+        if (currentView === 'bankView') {
+            setBankMessage(error.message, true);
+        }
+
+    } finally {
+        bankBusy = false;
+
+        if (currentView === 'bankView') {
+            $('bankRefresh').textContent = 'Refresh Balance';
+            renderBankAccounts();
+        }
+    }
+}
+
+/* Opening the screen: what is linked, then the balance of the main account. */
+
+async function loadBank() {
+    setBankMessage('');
+
+    try {
+        const status = await apiJson('/api/bank', {}, 15000);
+
+        bankAccounts = safeArray(status.accounts);
+
+        if (typeof status.autoRefreshMinutes === 'number') {
+            bankRefreshMinutes = Math.max(5, status.autoRefreshMinutes);
+        }
+
+        renderBankAccounts();
+
+        const chosen = bankAccounts.find(a => a.id === bankChosen);
+
+        $('bankBalance').textContent = chosen && chosen.balance !== null && chosen.balance !== undefined ? money(chosen.balance) : '—';
+        $('bankLastChecked').textContent = chosen && chosen.lastCheckedAt ? displayDateTime(chosen.lastCheckedAt) : 'Not yet';
+
+        if (!status.configured) {
+            setBankMessage('Check Balance is not set up on this server yet. It needs Setu Account Aggregator keys: ' +
+                safeArray(status.missing).join(', ') + '.', true);
+            return;
+        }
+
+        if (!bankAccounts.length) {
+            setBankMessage(status.pendingConsents
+                ? 'Consent not approved yet. Finish on Setu, or link again.'
+                : 'No bank account linked yet.');
+            return;
+        }
+
+        checkBankBalance(false);
+
+    } catch (error) {
+        setBankMessage(error.message, true);
+    }
+}
+
+/* Linking: Setu's own screens ask the user to pick their bank, verify with an OTP and approve. */
+
+$('bankLink').addEventListener('click', async function() {
+    const button = this;
+
+    button.disabled = true;
+    setBankMessage('Opening Setu...');
+
+    try {
+        const result = await postJson('/api/bank/link', {}, 30000);
+
+        goToSetu(result.url);
+
+    } catch (error) {
+        setBankMessage(error.message, true);
+        button.disabled = false;
+    }
+});
+
+/* Sends the browser to Setu's consent screens, and nowhere else. */
+
+function goToSetu(address) {
+    const url = new URL(address);
+
+    if (url.protocol !== 'https:' || !/(^|\.)setu\.co$/.test(url.hostname)) {
+        throw new Error('The server returned an unexpected linking address.');
+    }
+
+    window.location.assign(url.toString());
+}
+
+/* Back from Setu's screens: ask what became of the consent, then show the balance. */
+
+async function handleBankReturn() {
+    navigateTo('bankView');
+
+    setBankMessage('Checking your consent with Setu...');
+
+    try {
+        const result = await postJson('/api/bank/consents/check', {}, 30000);
+
+        bankAccounts = safeArray(result.accounts);
+
+        renderBankAccounts();
+
+        setBankMessage(safeArray(result.messages).join(' '));
+
+        if (bankAccounts.length) {
+            checkBankBalance(false);
+        }
+
+    } catch (error) {
+        setBankMessage(error.message, true);
+    }
+}
+
+$('bankAccountSelect').addEventListener('change', function() {
+    bankChosen = Number(this.value);
+
+    const chosen = bankAccounts.find(a => a.id === bankChosen);
+
+    $('bankBalance').textContent = chosen && chosen.balance !== null && chosen.balance !== undefined ? money(chosen.balance) : '—';
+    $('bankLastChecked').textContent = chosen && chosen.lastCheckedAt ? displayDateTime(chosen.lastCheckedAt) : 'Not yet';
+
+    renderBankAccounts();
+
+    checkBankBalance(false);
+});
+
+$('bankRefresh').addEventListener('click', () => checkBankBalance(true));
+
+$('bankBack').addEventListener('click', () => navigateTo('homeView'));
+
+$('bankPrimary').addEventListener('click', async function() {
+    try {
+        const result = await postJson('/api/bank/accounts/' + bankChosen + '/primary', {}, 15000);
+
+        bankAccounts = safeArray(result.accounts);
+
+        renderBankAccounts();
+
+        showToast('This is now your main account.');
+
+    } catch (error) {
+        setBankMessage(error.message, true);
+    }
+});
+
+$('bankRemove').addEventListener('click', async function() {
+    const chosen = bankAccounts.find(a => a.id === bankChosen);
+
+    if (!chosen || !await askConfirm('Remove ' + bankAccountLabel(chosen) + '?\n\n' +
+        'Monetra will revoke its consent at Setu and will no longer be able to read this account.', 'Remove', 'Go Back')) {
+        return;
+    }
+
+    try {
+        const result = await apiJson('/api/bank/accounts/' + chosen.id, { method: 'DELETE' }, 30000);
+
+        bankAccounts = safeArray(result.accounts);
+        bankChosen = null;
+
+        renderBankAccounts();
+
+        $('bankBalance').textContent = '—';
+        $('bankLastChecked').textContent = 'Not yet';
+
+        setBankMessage('The account was removed and its consent revoked.');
+
+        if (bankAccounts.length) {
+            checkBankBalance(false);
+        }
+
+    } catch (error) {
+        setBankMessage(error.message, true);
+    }
+});
+
+/*
+ * Automatic updates while Monetra is open: one check when the dashboard opens, then one every
+ * refresh interval (an hour, Setu's limit for a consent). The server asks the bank only when a new
+ * balance is due, so these checks never use up more than the consent allows.
+ */
+
+async function startBankUpdates() {
+    clearTimeout(bankTimer);
+
+    try {
+        const status = await apiJson('/api/bank', {}, 15000);
+
+        bankAccounts = safeArray(status.accounts);
+
+        if (typeof status.autoRefreshMinutes === 'number') {
+            bankRefreshMinutes = Math.max(5, status.autoRefreshMinutes);
+        }
+
+        if (status.configured && bankAccounts.length) {
+            await checkBankBalance(false);
+        }
+
+    } catch (error) {
+        /* Not set up, or not reachable: the Check Balance screen says why when it is opened. */
+    }
+
+    if (me.email) {
+        bankTimer = setTimeout(startBankUpdates, bankRefreshMinutes * 60000);
     }
 }
 

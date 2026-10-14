@@ -129,7 +129,7 @@ public class LoanRepaymentService {
             }
         }
 
-        out.sort(Comparator.comparing(Installment::date));
+        out.sort(Comparator.comparing((Installment i) -> i.date()));
 
         return out;
     }

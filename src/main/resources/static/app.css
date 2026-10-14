@@ -19,7 +19,7 @@
     --red: #ff7b6b;
     --amber: #f6b84a;
     --serif: "Playfair Display", "Cormorant Garamond", Georgia, "Times New Roman", serif;
-    --sans: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --sans: Poppins, Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
     --nav-h: 86px;
 }
 
@@ -1476,7 +1476,7 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
 /* a shorter screen (most phones, small laptops): drop the explanations, keep the controls */
 
-@media (max-height: 900px), (max-width: 640px) {
+@media (max-height: 760px), (max-width: 640px) {
     .page-head p { display: none; }
 
     .page-head h1 { font-size: 24px; }
@@ -1493,7 +1493,7 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
     .card-sub { display: none; }
 
-    .tab-panel form.card > .hint, #sendPanel > .footer-note { display: none; }
+    .tab-panel form.card > .hint:not(.keep), #sendPanel > .footer-note { display: none; }
 
     .card { padding: 12px 14px; }
 
@@ -1567,7 +1567,7 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
 .tab-panel .two-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
-@media (max-height: 900px), (max-width: 640px) {
+@media (max-height: 760px), (max-width: 640px) {
     /* Home: the Send Money button, the three cards and the two tiles, all in view */
 
     .hero-top { display: none; }
@@ -1595,7 +1595,7 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
     .he-reminder { padding: 4px 0; }
 }
 
-@media (max-height: 900px), (max-width: 640px) {
+@media (max-height: 760px), (max-width: 640px) {
     /* HE: the three options, the six methods and the form in one view */
 
     #heForm > h2 { display: none; }
@@ -1622,3 +1622,255 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 .tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .tile { min-height: 0; }
+
+/* ==========================================================
+   FILL THE SCREEN: a chat stretches down to the menu, so there
+   is no empty space under it; only its messages scroll.
+   ========================================================== */
+
+.tab-panel.fill:not(.hidden) { display: flex; flex-direction: column; }
+
+.tab-panel.fill > .card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+.tab-panel.fill > .card > * { flex: 0 0 auto; }
+
+.tab-panel.fill .chat-log { flex: 1 1 auto; min-height: 140px; max-height: none; align-content: start; }
+
+/* ==========================================================
+   SAFE TO SPEND TODAY (Home)
+   ========================================================== */
+
+.safe-spend {
+    display: grid;
+    gap: 3px;
+    width: 100%;
+    padding: 4px 4px 2px;
+    border: 0;
+    border-radius: 16px;
+    background: transparent;
+    color: var(--text);
+    font-weight: 400;
+    text-align: left;
+}
+
+.safe-spend:hover { background: var(--gold-soft); }
+
+.safe-label { color: var(--gold); font-size: 12px; font-weight: 800; letter-spacing: 1.2px; }
+
+.safe-amount { font-size: 36px; font-weight: 800; line-height: 1.1; color: var(--green); }
+
+.safe-amount.medium { color: var(--amber, #ffb74d); }
+
+.safe-amount.high { color: var(--alert-red); }
+
+.safe-amount.unknown { color: var(--muted); }
+
+.safe-text { font-size: 14px; line-height: 1.45; }
+
+.safe-sub { font-size: 12.5px; color: var(--muted); }
+
+.safe-sub:empty { display: none; }
+
+/* ==========================================================
+   RED BOXES: what to do, the Fraud Guard's reasons
+   ========================================================== */
+
+.alert-card .alert-action { margin-top: 6px; color: #ffe0e0; font-weight: 600; }
+
+.alert-list { margin: 6px 0 0; padding-left: 20px; color: #fff; font-size: 13.5px; line-height: 1.45; }
+
+.alert-card .check-row { margin-top: 8px; font-size: 13.5px; }
+
+/* ==========================================================
+   SMART BUY PLANNER and SCAM SHIELD
+   ========================================================== */
+
+.plan-status { margin: 4px 0 10px; padding: 10px 14px; border-radius: 14px; font-weight: 800; }
+
+.plan-status.good { color: var(--green); background: rgba(95, 216, 154, 0.1); border: 1px solid rgba(95, 216, 154, 0.45); }
+
+.plan-status.bad { color: var(--alert-red); background: rgba(255, 82, 82, 0.1); border: 2px solid var(--alert-red); }
+
+.plan-status.warn { color: #ffb74d; background: rgba(255, 183, 77, 0.1); border: 2px solid #ffb74d; }
+
+#planResult .stat-grid { margin: 0 0 10px; }
+
+#planResult .alert-card, #scamResult .alert-card { margin-top: 8px; }
+
+.plan-notes { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+
+.record-info { flex: 1 1 auto; min-width: 0; }
+
+textarea {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(5, 9, 40, 0.65);
+    border: 1px solid var(--gold-line);
+    border-radius: 16px;
+    color: var(--text);
+    font: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+}
+
+textarea::placeholder { color: var(--faint); }
+
+textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(242, 196, 92, 0.18); }
+
+#scamForm .btn-gold { width: 100%; margin-top: 12px; }
+
+.scam-text {
+    max-height: 130px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    background: rgba(5, 9, 40, 0.6);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.scam-text mark { padding: 0 2px; border-radius: 4px; background: rgba(255, 82, 82, 0.4); color: #fff; }
+
+.scam-report { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(242, 196, 92, 0.16); }
+
+.scam-report-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.scam-report .check-row { margin-top: 0; font-size: 13px; }
+
+/* ==========================================================
+   FULL-HEIGHT SCREENS: the content reaches down to the menu,
+   with no empty space under it and no extra scrolling.
+   The last card on a screen stretches to fill what is left:
+   a list grows, the parts of any other card spread evenly over
+   the height, and Home's cards grow taller. When a screen is
+   already full, nothing changes.
+   ========================================================== */
+
+.view-section > .tab-panel:not(.hidden), .tab-host > .tab-panel:not(.hidden) { display: flex; flex-direction: column; }
+
+/* the last card that is showing: no showing card comes after it */
+
+.tab-panel > .card:not(.hidden):not(:has(~ .card:not(.hidden))) { flex-grow: 1; display: flex; flex-direction: column; }
+
+/* a list grows into the space; it scrolls inside only when it is longer than the screen */
+
+.tab-panel > .card:not(.hidden):not(:has(~ .card:not(.hidden))) > .record-list { flex: 1 1 0; min-height: 120px; overflow-y: auto; align-content: start; }
+
+.tab-panel > .card:not(.hidden):not(:has(~ .card:not(.hidden))) > #paymentTable { flex: 1 1 0; min-height: 72px; overflow-y: auto; }
+
+/* any other card, a form or a summary: its parts spread evenly over the height, so no one gap is large */
+
+.tab-panel > .card:not(.hidden):not(:has(~ .card:not(.hidden))):not(:has(.record-list, .chat-log, ul, table)) {
+    justify-content: space-around;
+}
+
+/* Home: the Safe to Spend card keeps its size, and the cards under it grow taller */
+
+#homeView .tab-panel[data-tab="overview"] > .card { flex-grow: 0; }
+
+#homeView .tab-panel > .aware-grid { flex: 3 0 auto; }
+
+#homeView .tab-panel > .tile-grid { flex: 2 0 auto; }
+
+#homeView .aware-card, #homeView .tile { align-content: center; }
+
+
+/* the week's bar chart grows with the screen instead of leaving a gap under it */
+
+.tab-panel > .card:not(.hidden):not(:has(~ .card:not(.hidden))) > .bars { flex: 1 0 auto; height: auto; min-height: 170px; }
+
+/* ==========================================================
+   HOME: Send Money and Check Balance, side by side and alike
+   ========================================================== */
+
+.hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.safe-card { padding-top: 10px; padding-bottom: 10px; }
+
+@media (max-width: 640px) {
+    .hero-actions { gap: 8px; }
+
+    .hero-actions .big-action { gap: 8px; padding: 6px 8px 6px 6px; font-size: 15px; }
+
+    .hero-actions .big-action .dot { width: 34px; height: 34px; }
+
+    .hero-actions .big-action .chev { font-size: 22px; }
+}
+
+/* ==========================================================
+   CHECK BALANCE: the account, its balance, when it was checked
+   ========================================================== */
+
+.bank-row { display: grid; gap: 4px; }
+
+.bank-label { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.4px; }
+
+.bank-row strong { color: var(--text); font-size: 17px; overflow-wrap: anywhere; }
+
+.bank-row select { max-width: 520px; }
+
+.bank-main .bank-balance { color: var(--gold); font-size: 40px; font-weight: 800; line-height: 1.1; }
+
+.bank-main .bank-balance.stale { color: var(--muted); }
+
+#bankMessage:empty { display: none; }
+
+#bankMessage.warn { color: var(--amber); }
+
+.bank-card .button-row { margin-top: 4px; }
+
+.bank-manage { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+.bank-manage .link-button { padding: 4px 0; }
+
+/* ==========================================================
+   LETTERING: Poppins for everything, and the same elegant serif
+   as the page titles for every card and dashboard title
+   ========================================================== */
+
+.card h2, .aware-title, .tile strong, .sub-title, .safe-label, .bank-label {
+    font-family: var(--serif);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.safe-label, .bank-label { text-transform: none; font-size: 15px; color: var(--gold); }
+
+.big-action { font-weight: 600; letter-spacing: 0.2px; }
+
+.subtabs button, #bottomNav button, .method-tabs button { letter-spacing: 0.2px; }
+
+.safe-amount, .bank-main .bank-balance, .stat .v, .aware-main { letter-spacing: 0.2px; }
+
+/* a short window: forms a little tighter, so a whole form fits without scrolling */
+
+@media (max-height: 760px) {
+    .tab-panel label { margin: 5px 0 2px; }
+
+    .tab-panel form.card input:not([type="checkbox"]), .tab-panel form.card select { padding: 8px 12px; }
+
+    .tab-panel .card > .two-col { gap: 0 10px; }
+
+    .tab-panel .sub-title { margin: 8px 0 4px; }
+
+    .tab-panel .card .button-row, .tab-panel form.card .btn-gold { margin-top: 10px; }
+}
+
+
+/* a very short window (under 700px high): the last few pixels for the longest forms */
+
+@media (max-height: 700px) {
+    .tab-panel form.card input:not([type="checkbox"]), .tab-panel form.card select { padding-top: 6px; padding-bottom: 6px; }
+
+    .tab-panel label { margin: 4px 0 2px; font-size: 12px; }
+
+    .tab-panel .card h2 { margin-bottom: 4px; }
+
+    .subtabs button { padding: 6px 12px; }
+
+    .tab-panel .card { padding-top: 10px; padding-bottom: 10px; }
+}

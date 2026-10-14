@@ -156,7 +156,8 @@ public class GuardianAnalysisService {
         if (!installments.isEmpty()) {
             LoanRepaymentService.Installment first = installments.get(0);
 
-            nextEmi = "\"" + first.loan().name() + "\" of " + Inr.of(first.loan().emi())
+            /* Its amount is already in the EMI total, so only the name and the date are added. */
+            nextEmi = "\"" + first.loan().name() + "\""
                     + (first.overdue() ? ", overdue since " : first.date().equals(today) ? ", due today, " : ", due on ")
                     + Inr.date(first.date());
         }
@@ -191,7 +192,9 @@ public class GuardianAnalysisService {
         Map<String, Object> daily = dailyBudget.assess(data, amount, today);
 
         List<Map<String, String>> cards = new ArrayList<>();
-        List<String> notes = new ArrayList<>();
+
+        /* What is fine or could not be checked, with the area it belongs to. */
+        List<Map<String, String>> notes = new ArrayList<>();
         List<String> options = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         List<Map<String, String>> impacts = new ArrayList<>();
@@ -219,7 +222,9 @@ public class GuardianAnalysisService {
                         .append(" limit is also exceeded by ").append(Inr.of((BigDecimal) other.get("overBy"))).append(".");
             }
 
-            cards.add(card(period.toUpperCase() + " LIMIT EXCEEDED", text.toString()));
+            Map<String, String> limitCard = card(period.toUpperCase() + " LIMIT EXCEEDED", text.toString());
+
+            cards.add(limitCard);
 
             String who = Inr.of(amount) + (recipient == null || recipient.isBlank() ? "" : " to " + recipient.trim());
 
@@ -238,11 +243,16 @@ public class GuardianAnalysisService {
 
             BigDecimal room = limit.subtract(spent);
 
-            options.add(room.signum() > 0
+            String option = room.signum() > 0
                     ? "Pay " + Inr.of(room) + " or less to stay inside your " + period + " limit."
                     : "daily".equals(period)
                             ? "Wait until tomorrow, when your daily limit starts again."
-                            : "Review your " + period + " limit in Spending before paying.");
+                            : "Review your " + period + " limit in Spending before paying.";
+
+            options.add(option);
+
+            /* What to do goes in the box it belongs to, not in a separate list that repeats it. */
+            limitCard.put("action", option);
         }
 
         if (Boolean.TRUE.equals(daily.get("limitSet")) || !"UNKNOWN".equals(dailyStatus)) {
@@ -286,14 +296,14 @@ public class GuardianAnalysisService {
                         + ". That leaves very little for anything unexpected."));
 
             } else {
-                notes.add("After this payment and " + pos.commitments() + " " + pos.until() + ", about "
-                        + Inr.of(projected) + " is projected to be left.");
+                notes.add(card("LOANS AND BILLS", "After this payment and " + pos.commitments() + " " + pos.until() + ", about "
+                        + Inr.of(projected) + " is projected to be left."));
             }
 
             if ("HIGH".equals(loanStatus)) {
                 BigDecimal safe = pos.balance().subtract(pos.emisDue()).subtract(pos.essentials()).subtract(pos.bills()).subtract(pos.buffer());
 
-                options.add(safe.signum() > 0
+                act(cards, options, safe.signum() > 0
                         ? "Pay " + Inr.of(safe) + " or less to keep your known commitments covered."
                         : pos.payday() != null
                                 ? "Postpone this payment until after your next income on " + Inr.date(pos.payday()) + "."
@@ -311,8 +321,8 @@ public class GuardianAnalysisService {
                 if (left.compareTo(emis) >= 0) {
                     loanStatus = "LOW";
 
-                    notes.add("After this payment " + Inr.of(left) + " of this month's budget is left, which still covers your EMIs of "
-                            + Inr.of(emis) + " due in the next 30 days.");
+                    notes.add(card("LOANS AND BILLS", "After this payment " + Inr.of(left)
+                            + " of this month's budget is left, which still covers your EMIs of " + Inr.of(emis) + " due in the next 30 days."));
 
                 } else {
                     loanStatus = "HIGH";
@@ -323,15 +333,12 @@ public class GuardianAnalysisService {
                             : "After this payment nothing is left of this month's budget, so your EMIs of "
                                     + Inr.of(emis) + " due in the next 30 days are NOT covered."));
 
-                    options.add("Postpone this payment or reduce the amount so your EMIs stay covered.");
+                    act(cards, options, "Postpone this payment or reduce the amount so your EMIs stay covered.");
                 }
             }
 
             if ("UNKNOWN".equals(loanStatus) && (pos.emisDue().signum() > 0 || pos.bills().signum() > 0)) {
-                missing.add("Monetra cannot check whether " + pos.commitments() + " " + pos.until()
-                        + " stay covered, because your available balance is not set. Add it in Spending.");
-
-                /* What is known is still said: the commitments exist, even if the balance is not known. */
+                /* What is known is still said, once: the commitments exist, even if the balance is not known. */
 
                 StringBuilder known = new StringBuilder("You still have " + pos.commitments().substring("your ".length())
                         + " to pay " + pos.until() + ".");
@@ -340,12 +347,13 @@ public class GuardianAnalysisService {
                     known.append(" The next EMI is ").append(pos.nextEmi()).append(".");
                 }
 
-                if (pos.emisDue().signum() > 0 && amount.compareTo(pos.emisDue().multiply(BigDecimal.valueOf(2))) >= 0) {
-                    known.append(" This payment is about ").append(amount.divide(pos.emisDue(), 0, RoundingMode.HALF_UP))
-                            .append(" times your EMIs.");
-                }
+                known.append(" Monetra cannot check whether they stay covered, because your available balance is not set.");
 
-                notes.add(known.toString());
+                Map<String, String> loansNote = card("LOANS AND BILLS", known.toString());
+
+                loansNote.put("action", "Add your available balance in Spending, under My money.");
+
+                notes.add(loansNote);
             }
         }
 
@@ -403,21 +411,27 @@ public class GuardianAnalysisService {
 
             if ("LOW".equals(savingsStatus)) {
                 if (saved.signum() > 0) {
-                    notes.add(text.toString());
+                    notes.add(card("SAVINGS GOAL", text.toString()));
                 }
 
             } else {
                 cards.add(card("SAVINGS GOAL IMPACT", text.toString()));
 
-                options.add("Choose a lower-cost option or wait, so your " + name + " goal stays on track.");
+                act(cards, options, "Choose a lower-cost option or wait, so your " + name + " goal stays on track.");
             }
 
             impacts.add(impact("Savings goal", savingsStatus));
         }
 
-        /* The user decides. */
+        /*
+         * When something needs a warning, everything else the user should know joins the same numbered
+         * boxes, so each fact is shown once and in one place. Then the user decides.
+         */
 
-        if (!cards.isEmpty()) {
+        boolean warned = !cards.isEmpty();
+
+        if (warned) {
+            cards.addAll(notes);
             cards.add(card("YOUR DECISION", "Review the payment and decide whether to continue."));
         }
 
@@ -429,7 +443,7 @@ public class GuardianAnalysisService {
         out.put("overallLabel", "UNKNOWN".equals(overall) ? "NOT ENOUGH DATA" : overall + " FINANCIAL RISK");
         out.put("impacts", impacts);
         out.put("cards", cards);
-        out.put("notes", notes);
+        out.put("notes", warned ? List.of() : notes.stream().map(n -> n.get("text")).toList());
         out.put("options", options.size() > 3 ? options.subList(0, 3) : options);
         out.put("missing", missing);
         out.put("limitExceeded", !broken.isEmpty());
@@ -485,7 +499,21 @@ public class GuardianAnalysisService {
             lines.add(String.valueOf(note));
         }
 
-        return lines.size() > 6 ? lines.subList(0, 6) : lines;
+        List<String> out = new ArrayList<>(lines.size() > 6 ? lines.subList(0, 6) : lines);
+
+        /* What the user could do, so the AI's advice can name these amounts instead of working out its own. */
+
+        List<String> could = new ArrayList<>();
+
+        for (Object option : (List<?>) review.get("options")) {
+            could.add(String.valueOf(option));
+        }
+
+        if (!could.isEmpty()) {
+            out.add("What you could do: " + String.join(" ", could));
+        }
+
+        return out;
     }
 
     /* ------------------------------------------------------------------ */
@@ -574,7 +602,7 @@ public class GuardianAnalysisService {
         } else {
             loanText = pos.loans().isEmpty()
                     ? "Add a loan to see your EMIs here."
-                    : "Add your available balance in Spending so Monetra can tell you whether your EMIs are covered.";
+                    : "Add your balance in Spending, under My money, to check your EMIs.";
         }
 
         loans.put("status", loanStatus);
@@ -625,7 +653,7 @@ public class GuardianAnalysisService {
                     ? "Next month's known commitments are " + Inr.of(remaining.negate()) + " more than your expected income. That month could be difficult to manage."
                     : "After next month's known commitments, about " + Inr.of(remaining) + " of your expected income is projected to be left.");
         } else {
-            nextMonth.put("text", "This forecast is incomplete: add your monthly income in Spending to see it.");
+            nextMonth.put("text", "Add your monthly income in Spending to see this.");
         }
 
         out.put("nextMonth", nextMonth);
@@ -660,6 +688,8 @@ public class GuardianAnalysisService {
 
         out.put("goals", goals);
         out.put("activeGoal", savingsGoals.active(goals));
+
+        out.put("safeToSpend", safeToSpend(pos, data, goals, today));
 
         /* The money figures behind all of this. */
 
@@ -829,6 +859,106 @@ public class GuardianAnalysisService {
         }
     }
 
+    /**
+     * Safe to spend today. The money the user had when the day began, minus everything that has to be
+     * paid before the next income (EMIs, household bills, essential expenses, planned goal savings and
+     * the emergency buffer), shared over the days until then. What was already spent today comes off.
+     * Only the user's own balance is used: nothing borrowed is counted.
+     */
+    Map<String, Object> safeToSpend(Position pos, JsonNode data, List<Map<String, Object>> goals, LocalDate today) {
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        if (pos.balance() == null) {
+            out.put("known", false);
+            out.put("text", "Add your balance and income day in Spending, under My money.");
+            return out;
+        }
+
+        /* Spent today, apart from EMIs: an EMI paid today already left the list of what is still due. */
+
+        BigDecimal spentToday = BigDecimal.ZERO;
+
+        for (JsonNode e : data.path("expenses")) {
+            if (today.toString().equals(e.path("date").asText("")) && !"emi".equals(e.path("source").asText(""))) {
+                spentToday = spentToday.add(BudgetRules.decimal(e.path("amount")));
+            }
+        }
+
+        BigDecimal days = BigDecimal.valueOf(Math.max(1, pos.days()));
+
+        /* Each unfinished goal's saving for the days until the next income, never more than it still needs. */
+
+        BigDecimal savings = BigDecimal.ZERO;
+
+        for (Map<String, Object> g : goals) {
+            if ("REACHED".equals(g.get("status"))) {
+                continue;
+            }
+
+            BigDecimal monthly = (BigDecimal) g.get("plannedMonthly");
+
+            if (monthly.signum() <= 0 && g.get("requiredMonthly") instanceof BigDecimal required) {
+                monthly = required;
+            }
+
+            BigDecimal share = monthly.multiply(days).divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP);
+
+            savings = savings.add(share.min((BigDecimal) g.get("remaining")));
+        }
+
+        BigDecimal protectedTotal = BudgetRules.money(
+                pos.emisDue().add(pos.bills()).add(pos.essentials()).add(savings).add(pos.buffer()));
+
+        BigDecimal free = pos.balance().add(spentToday).subtract(protectedTotal);
+
+        BigDecimal perDay = free.signum() > 0
+                ? free.divide(days, 0, RoundingMode.DOWN)
+                : BigDecimal.ZERO;
+
+        BigDecimal safe = perDay.subtract(spentToday).max(BigDecimal.ZERO);
+
+        Map<String, Object> parts = new LinkedHashMap<>();
+        parts.put("emis", pos.emisDue());
+        parts.put("bills", pos.bills());
+        parts.put("essentials", pos.essentials());
+        parts.put("savings", BudgetRules.money(savings));
+        parts.put("buffer", pos.buffer());
+
+        out.put("known", true);
+        out.put("amount", BudgetRules.money(safe));
+        out.put("perDay", BudgetRules.money(perDay));
+        out.put("spentToday", BudgetRules.money(spentToday));
+        out.put("balance", pos.balance());
+        out.put("protected", protectedTotal);
+        out.put("parts", parts);
+        out.put("until", pos.until());
+        out.put("days", pos.days());
+
+        String status;
+        String text;
+
+        if (free.signum() <= 0) {
+            status = "HIGH";
+            text = "Nothing is safe to spend today. Your money does not cover the " + Inr.of(protectedTotal)
+                    + " for your EMIs, bills, essentials and savings " + pos.until() + ".";
+
+        } else if (spentToday.compareTo(perDay) > 0) {
+            status = "HIGH";
+            text = "You have spent " + Inr.of(spentToday) + " today, " + Inr.of(spentToday.subtract(perDay))
+                    + " more than today's safe amount of " + Inr.of(perDay) + ". Your EMIs and bills " + pos.until() + " now have less room.";
+
+        } else {
+            status = safe.multiply(BigDecimal.valueOf(4)).compareTo(perDay) < 0 ? "MEDIUM" : "LOW";
+            text = "Your EMIs, bills, essentials and planned savings " + pos.until() + " (" + Inr.of(protectedTotal)
+                    + ") are protected. You can spend up to " + Inr.of(safe) + " today"
+                    + (spentToday.signum() > 0 ? ", after the " + Inr.of(spentToday) + " you already spent." : ".");
+        }
+
+        out.put("status", status);
+        out.put("text", text);
+        return out;
+    }
+
     /** The user's average spending on the days they spent, over the two weeks before today. Null without enough history. */
     private static BigDecimal usualDailySpend(JsonNode data, LocalDate today) {
         Map<String, BigDecimal> byDay = new LinkedHashMap<>();
@@ -840,7 +970,7 @@ public class GuardianAnalysisService {
             String date = e.path("date").asText("");
 
             if (date.compareTo(from) >= 0 && date.compareTo(until) <= 0) {
-                byDay.merge(date, BudgetRules.decimal(e.path("amount")), BigDecimal::add);
+                byDay.merge(date, BudgetRules.decimal(e.path("amount")), (a, b) -> a.add(b));
             }
         }
 
@@ -848,7 +978,7 @@ public class GuardianAnalysisService {
             return null;
         }
 
-        BigDecimal total = byDay.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal total = byDay.values().stream().reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         return total.divide(BigDecimal.valueOf(byDay.size()), 2, RoundingMode.HALF_UP);
     }
@@ -892,6 +1022,15 @@ public class GuardianAnalysisService {
         c.put("title", title);
         c.put("text", text);
         return c;
+    }
+
+    /** What the user could do about the box just added: kept in that box, and in the list of options. */
+    private static void act(List<Map<String, String>> cards, List<String> options, String action) {
+        options.add(action);
+
+        if (!cards.isEmpty()) {
+            cards.get(cards.size() - 1).put("action", action);
+        }
     }
 
     private static Map<String, String> impact(String area, String level) {

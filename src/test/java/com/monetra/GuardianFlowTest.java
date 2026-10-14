@@ -239,7 +239,7 @@ class GuardianFlowTest {
 		assertTrue(methods.contains("\"id\":\"MYQR\",\"label\":\"My Payment QR\",\"kind\":\"RECEIVE\""), methods);
 		assertTrue(methods.contains("\"id\":\"CASH\",\"label\":\"Cash\",\"kind\":\"RECORD\""), methods);
 		assertTrue(methods.contains("\"id\":\"BANK\",\"label\":\"Bank Transfer\",\"kind\":\"RECORD\""), methods);
-		assertTrue(methods.contains("PayPal cannot send money to a bank account"), methods);
+		assertTrue(methods.contains("Monetra does not start bank transfers"), methods);
 
 		assertEquals(401, new Http(port).get("/api/he/methods").statusCode());
 	}

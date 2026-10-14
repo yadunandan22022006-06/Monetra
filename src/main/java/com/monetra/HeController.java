@@ -82,20 +82,19 @@ public class HeController {
         List<Map<String, Object>> out = new ArrayList<>();
 
         out.add(method("SCAN", "Scan & Pay", "PAYPAL", ready,
-                ready ? "Scan a Monetra or UPI QR code. You approve the payment on PayPal." : notReady));
+                ready ? "Scan a QR code. You approve on PayPal." : notReady));
 
         out.add(method("MYQR", "My Payment QR", "RECEIVE", true,
-                "Your own Monetra QR code. Anyone can scan it to pay you."));
+                "Your QR code, for others to pay you."));
 
         out.add(method("MOBILE", "Mobile Number", "PAYPAL", ready,
-                ready ? "Pay by mobile number. The name is shown before you pay, and you approve the payment on PayPal." : notReady));
+                ready ? "Pay a mobile number. You approve on PayPal." : notReady));
 
         out.add(method("BANK", "Bank Transfer", "RECORD", true,
-                "PayPal cannot send money to a bank account, so Monetra does not start a bank transfer. "
-                        + "Make it in your bank's app (NEFT, IMPS, RTGS or UPI), then record it here."));
+                "Monetra does not start bank transfers. Pay in your bank's app, then record it here."));
 
         out.add(method("CASH", "Cash", "RECORD", true,
-                "Record a home expense you paid in cash. No money is moved."));
+                "Record cash you paid. No money moves."));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("provider", "PayPal Sandbox");

@@ -65,7 +65,7 @@ public class PaymentService {
                 "You sent " + rupees(rec.amountInr) + " to " + rec.recipientName + ".", rec.paymentId);
 
         if (rec.recipientUserId != null) {
-            String from = users.findById(rec.userId).map(UserAccount::displayName).orElse("someone");
+            String from = users.findById(rec.userId).map(u -> u.displayName()).orElse("someone");
 
             notifyUser(rec.recipientUserId, "PAYMENT_RECEIVED",
                     "You received " + rupees(rec.amountInr) + " from " + from
@@ -116,7 +116,7 @@ public class PaymentService {
             setPayout(rec, "WAITING_EMAIL", "Waiting for the receiver to add their PayPal email.");
 
             if (first && to != null) {
-                String from = users.findById(rec.userId).map(UserAccount::displayName).orElse("someone");
+                String from = users.findById(rec.userId).map(u -> u.displayName()).orElse("someone");
 
                 notifyUser(rec.recipientUserId, "PAYOUT",
                         "Add your PayPal email in Monetra Guardian to receive " + rupees(rec.amountInr)

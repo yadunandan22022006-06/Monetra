@@ -9,7 +9,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="app.css">
 </head>
 
@@ -90,7 +90,7 @@
 
             <div class="field">
                 <svg class="i"><use href="#i-user"/></svg>
-                <input type="text" id="registerName" placeholder="Full name (shown to people who pay you)" maxlength="60" autocomplete="name" aria-label="Full name" required>
+                <input type="text" id="registerName" placeholder="Full name" maxlength="60" autocomplete="name" aria-label="Full name" required>
             </div>
 
             <div class="field">
@@ -100,7 +100,7 @@
 
             <div class="field">
                 <svg class="i"><use href="#i-phone"/></svg>
-                <input type="tel" id="registerPhone" placeholder="Mobile number (people pay you with it)" autocomplete="tel" inputmode="tel" minlength="10" maxlength="16" aria-label="Mobile number" required>
+                <input type="tel" id="registerPhone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" minlength="10" maxlength="16" aria-label="Mobile number" required>
             </div>
 
             <div class="field">
@@ -115,7 +115,7 @@
 
         <form id="otpForm" class="hidden">
 
-            <p class="hint">We sent a 6-digit code to your email. It expires in 5 minutes.</p>
+            <p class="hint">Code sent to your email. It expires in 5 minutes.</p>
 
             <div class="field">
                 <svg class="i"><use href="#i-shield"/></svg>
@@ -189,19 +189,32 @@
 
             <div class="tab-panel" data-group="home" data-tab="overview">
 
-            <div class="card hero-card">
-                <div class="hero-top">
-                    <span class="logo-circle"><svg class="i"><use href="#i-send"/></svg></span>
-                    <div>
-                        <h2>Send Money</h2>
-                        <p>Scan a QR code or enter a mobile number. Monetra finds the name for you.</p>
-                    </div>
-                </div>
+            <!-- the two main buttons: Send Money first, Check Balance second, styled the same -->
 
-                <button type="button" class="big-action" onclick="navigateTo('paymentView', 'send')">
-                    <span class="dot"><svg class="i"><use href="#i-send"/></svg></span>
-                    Send Money
-                    <span class="chev">›</span>
+            <div class="card hero-card">
+                <div class="hero-actions">
+                    <button type="button" class="big-action" onclick="navigateTo('paymentView', 'send')">
+                        <span class="dot"><svg class="i"><use href="#i-send"/></svg></span>
+                        Send Money
+                        <span class="chev">›</span>
+                    </button>
+
+                    <button type="button" class="big-action" id="checkBalanceButton" onclick="openCheckBalance()">
+                        <span class="dot"><svg class="i"><use href="#i-bank"/></svg></span>
+                        Check Balance
+                        <span class="chev">›</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Safe to spend today: worked out by the server from the user's own balance -->
+
+            <div class="card safe-card">
+                <button type="button" class="safe-spend" id="safeSpend" onclick="openMyMoney()">
+                    <span class="safe-label">SAFE TO SPEND TODAY</span>
+                    <strong class="safe-amount unknown" id="safeAmount">—</strong>
+                    <span class="safe-text" id="safeText">Add your balance and income day in Spending to see this.</span>
+                    <span class="safe-sub" id="safeSub"></span>
                 </button>
             </div>
 
@@ -243,13 +256,13 @@
                 <button type="button" class="tile" onclick="navigateTo('forecastView')">
                     <span class="tile-icon"><svg class="i"><use href="#i-trend"/></svg></span>
                     <strong>Spending Forecast</strong>
-                    <span class="sub" id="tileForecast">See where this month is heading.</span>
+                    <span class="sub" id="tileForecast">This month's pace.</span>
                 </button>
 
                 <button type="button" class="tile" onclick="navigateTo('fraudView')">
                     <span class="tile-icon"><svg class="i"><use href="#i-shield"/></svg></span>
                     <strong>Fraud Guard Alerts</strong>
-                    <span class="sub" id="tileFraud">Checks every payment before it goes.</span>
+                    <span class="sub" id="tileFraud">Every payment checked.</span>
                 </button>
 
             </div>
@@ -278,7 +291,6 @@
             <div class="page-head">
                 <div>
                     <h1>Pay</h1>
-                    <p>Send money or share your QR code to get paid.</p>
                 </div>
             </div>
 
@@ -375,7 +387,7 @@
                                    aria-label="Account holder name">
                         </div>
 
-                        <p class="hint">Monetra keeps only the IFSC and the last 4 digits of the account number.</p>
+                        <p class="hint keep">Only the IFSC and the last 4 digits are kept.</p>
 
                     </div>
 
@@ -444,9 +456,7 @@
 
                 </div>
 
-                <p class="footer-note centered">
-                    Sandbox mode: payments use PayPal Sandbox test money. No real money moves.
-                </p>
+                <p class="footer-note centered">PayPal Sandbox: test money only.</p>
 
             </div>
 
@@ -462,7 +472,7 @@
                     <div class="big-number" id="myPhone"></div>
                     <div class="hint" id="myName"></div>
 
-                    <p class="hint">Anyone can scan this code, or type your number, to pay you. You get a notification the moment PayPal confirms the payment.</p>
+                    <p class="hint">Scan this code or use your number to pay me.</p>
                 </div>
 
                 <div class="card">
@@ -481,7 +491,6 @@
             <div class="page-head">
                 <div>
                     <h1>Spending Limit</h1>
-                    <p>Set your daily, weekly, monthly or yearly limit and keep your expenses in control.</p>
                 </div>
             </div>
 
@@ -505,15 +514,13 @@
 
                 <h2><svg class="i"><use href="#i-wallet"/></svg><span id="limitTitle">Daily Spending Limit</span></h2>
 
-                <p class="card-sub" id="limitHelp">Set the maximum amount you want to spend in a day.</p>
+                <p class="card-sub hidden" id="limitHelp">Set the maximum amount you want to spend in a day.</p>
 
                 <div class="field has-prefix">
                     <span class="prefix">₹</span>
                     <input type="number" id="limitAmount" min="1" max="1000000000" step="0.01"
                            placeholder="Enter amount (e.g. 5000)" aria-label="Limit amount" required>
                 </div>
-
-                <p class="hint">Your selected limit is checked before every payment.</p>
 
                 <button type="submit" class="btn-gold">Save Limit</button>
 
@@ -539,9 +546,6 @@
                     <span class="pill-count" id="moneyNow">Not set</span>
                 </div>
 
-                <p class="card-sub">The Guardian uses these to check your EMIs, bills and savings goals before you pay.
-                    Leave empty anything you do not know.</p>
-
                 <div class="two-col">
                     <div>
                         <label for="moneyBalance">Available balance now (₹)</label>
@@ -565,8 +569,7 @@
                     </div>
                 </div>
 
-                <p class="hint">Do not put EMIs or home bills into essential expenses: Monetra counts them on their own,
-                    so nothing is counted twice. Your balance moves by itself with every payment and expense you record.</p>
+                <p class="hint">Leave EMIs and home bills out of essentials: they are counted separately.</p>
 
                 <button type="submit" class="btn-gold">Save My Money</button>
 
@@ -587,7 +590,7 @@
 
             <form id="expenseForm" class="card">
                 <h2>Record an expense</h2>
-                <p class="card-sub">Payments you make with Monetra are added automatically. Use this for cash and other spending.</p>
+                <p class="hint">Monetra payments are added automatically.</p>
 
                 <div class="pay-row">
                     <div class="field has-prefix">
@@ -614,7 +617,6 @@
 
             <div class="page-head center">
                 <h1>Loans &amp; EMI Tracker</h1>
-                <p>Keep loan payments and due dates organised.</p>
             </div>
 
             <div class="subtabs" data-group="loan" role="tablist">
@@ -741,13 +743,13 @@
 
             <div class="page-head center">
                 <h1>Savings Goals</h1>
-                <p>Create a savings target and track your progress.</p>
             </div>
 
             <div class="subtabs" data-group="goal" role="tablist">
                 <button type="button" data-tab="list" class="active">My goals</button>
                 <button type="button" data-tab="add">Add goal</button>
                 <button type="button" data-tab="record">Record savings</button>
+                <button type="button" data-tab="plan">Buy Planner</button>
             </div>
 
             <div class="tab-panel hidden" data-group="goal" data-tab="add">
@@ -844,6 +846,103 @@
 
             </div>
 
+            <div class="tab-panel hidden" data-group="goal" data-tab="plan">
+
+            <!-- Smart Buy Planner: when can the user buy something without missing an EMI, a bill or a goal? -->
+
+            <form id="planForm" class="card">
+
+                <h2><svg class="i"><use href="#i-target"/></svg>Smart Buy Planner</h2>
+
+                <div class="two-col">
+                    <div>
+                        <label for="planItem">What do you want to buy?</label>
+                        <input id="planItem" type="text" maxlength="60" placeholder="e.g. New phone" required>
+                    </div>
+                    <div>
+                        <label for="planPrice">Price (₹)</label>
+                        <input id="planPrice" type="number" min="1" max="1000000000" step="0.01" placeholder="0.00" required>
+                    </div>
+                    <div>
+                        <label for="planDate">Wanted date (optional)</label>
+                        <input id="planDate" type="date">
+                    </div>
+                    <div>
+                        <label for="planSaving">You can save a month (₹)</label>
+                        <input id="planSaving" type="number" min="1" max="1000000000" step="0.01" placeholder="Optional">
+                    </div>
+                    <div class="wide">
+                        <label for="planPriority">Priority</label>
+                        <select id="planPriority">
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM" selected>Medium</option>
+                            <option value="LOW">Low</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-gold" id="planSubmit">Check when I can buy it</button>
+
+                <div id="planMessage" class="message" role="status" aria-live="polite"></div>
+
+            </form>
+
+            <div id="planResult" class="card hidden" aria-live="polite"></div>
+
+            <div id="planTracking" class="card hidden">
+                <h2>Saving for</h2>
+                <div id="planList" class="record-list"></div>
+            </div>
+
+            </div>
+
+        </section>
+
+        <!-- ================= CHECK BALANCE (Setu Account Aggregator) ================= -->
+
+        <section class="view-section" id="bankView">
+
+            <div class="page-head center">
+                <h1>Check Balance</h1>
+            </div>
+
+            <div class="tab-panel" data-group="bank" data-tab="balance">
+
+            <div class="card bank-card" id="bankCard">
+
+                <div class="bank-row">
+                    <span class="bank-label">Bank Account</span>
+                    <select id="bankAccountSelect" class="hidden" aria-label="Bank account"></select>
+                    <strong id="bankAccountName">No bank account linked</strong>
+                </div>
+
+                <div class="bank-row bank-main">
+                    <span class="bank-label">Balance</span>
+                    <strong class="bank-balance" id="bankBalance">—</strong>
+                </div>
+
+                <div class="bank-row">
+                    <span class="bank-label">Last Checked</span>
+                    <strong id="bankLastChecked">Not yet</strong>
+                </div>
+
+                <div id="bankMessage" class="message" role="status" aria-live="polite"></div>
+
+                <div class="button-row">
+                    <button type="button" id="bankBack">Go Back</button>
+                    <button type="button" class="btn-gold" id="bankRefresh">Refresh Balance</button>
+                </div>
+
+                <div class="bank-manage">
+                    <button type="button" class="link-button" id="bankLink">Link Bank Account</button>
+                    <button type="button" class="link-button hidden" id="bankPrimary">Make this my main account</button>
+                    <button type="button" class="link-button hidden" id="bankRemove">Remove this account</button>
+                </div>
+
+            </div>
+
+            </div>
+
         </section>
 
         <!-- ================= ACTIVITY / TRANSACTIONS ================= -->
@@ -852,7 +951,6 @@
 
             <div class="page-head center">
                 <h1>Transactions</h1>
-                <p>Everything you sent, everything you received, and the status of your PayPal payments.</p>
             </div>
 
             <div class="subtabs" data-group="tx" role="tablist">
@@ -904,7 +1002,6 @@
                 <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
                 <div>
                     <h1>Spending Forecast</h1>
-                    <p>Where this month is heading if your spending pace continues.</p>
                 </div>
             </div>
 
@@ -925,7 +1022,6 @@
 
             <div class="card">
                 <h2><svg class="i"><use href="#i-trend"/></svg>Guardian AI</h2>
-                <p class="card-sub">The numbers above are calculated by Monetra's rules. The AI only explains them.</p>
 
                 <div id="forecastAi"></div>
 
@@ -944,7 +1040,6 @@
                 <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
                 <div>
                     <h1>Fraud Guard</h1>
-                    <p>Unusual payments are paused until you confirm them.</p>
                 </div>
             </div>
 
@@ -971,7 +1066,7 @@
                     <div class="record-item"><div><strong>Unusual amount</strong><div class="sub">More than 3 times your usual payment.</div></div></div>
                     <div class="record-item"><div><strong>Rapid payments</strong><div class="sub">3 or more payments started in 10 minutes.</div></div></div>
                 </div>
-                <p class="footer-note">A flag never blocks you. It asks you to confirm before the payment goes to PayPal.</p>
+                <p class="footer-note">A flag never blocks a payment: it asks you to confirm.</p>
             </div>
 
             </div>
@@ -986,7 +1081,6 @@
                 <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
                 <div>
                     <h1>Monetra Guardian</h1>
-                    <p>Your AI, your payments, your home and your family in one place.</p>
                 </div>
             </div>
 
@@ -1002,15 +1096,36 @@
                 <div class="subtabs" data-group="gai" role="tablist">
                     <button type="button" data-tab="chat" class="active">AI Guardian</button>
                     <button type="button" data-tab="paypal">PayPal</button>
+                    <button type="button" data-tab="scam">Scam Shield</button>
                 </div>
 
-                <div class="tab-panel" data-group="gai" data-tab="chat">
+                <div class="tab-panel hidden" data-group="gai" data-tab="scam">
+
+                <!-- Scam Shield: the pasted message is checked on the server and never saved -->
+
+                <form id="scamForm" class="card">
+
+                    <h2><svg class="i"><use href="#i-shield"/></svg>Scam Shield</h2>
+
+                    <p class="hint keep">Your message is not saved.</p>
+
+                    <label for="scamText">Message to check</label>
+                    <textarea id="scamText" maxlength="2000" rows="4" placeholder="Paste the message or link" required></textarea>
+
+                    <button type="submit" class="btn-gold" id="scamCheck">Check this message</button>
+
+                    <div id="scamMessage" class="message" role="status" aria-live="polite"></div>
+
+                </form>
+
+                <div id="scamResult" class="card hidden" aria-live="polite"></div>
+
+                </div>
+
+                <div class="tab-panel fill" data-group="gai" data-tab="chat">
 
                 <div class="card" id="agentCard">
                     <h2><svg class="i"><use href="#i-robot"/></svg>AI Financial Guardian</h2>
-
-                    <p class="card-sub">Ask about your money. It uses your own records and never invents numbers.
-                        It can prepare a payment or a reminder, but only you can confirm it.</p>
 
                     <div class="chips" id="agentSuggestions">
                         <button type="button" class="chip" data-q="Can I afford a purchase of ₹2,000?">Can I afford ₹2,000?</button>
@@ -1021,7 +1136,7 @@
                     </div>
 
                     <div id="agentLog" class="chat-log" aria-live="polite">
-                        <div class="bubble bot">Hi! Ask me something like “Can I afford ₹2,000 on shoes?” or “Prepare a payment of ₹800 to Ravi”.</div>
+                        <div class="bubble bot">Ask about your money, or tap a question above.</div>
                     </div>
 
                     <form id="agentForm" class="chat-form" autocomplete="off">
@@ -1044,8 +1159,6 @@
                         <button type="button" class="btn-gold" onclick="navigateTo('paymentView', 'send')">Send money</button>
                         <button type="button" onclick="navigateTo('paymentView', 'receive')">Receive money</button>
                     </div>
-
-                    <h3 class="sub-title">Get paid to your PayPal account</h3>
 
                     <form id="paypalEmailForm" class="chat-form">
                         <input id="paypalEmailInput" type="email" maxlength="120" placeholder="Your PayPal (Sandbox) email" aria-label="Your PayPal email">
@@ -1082,8 +1195,6 @@
                     <div class="card-head">
                         <h2><svg class="i"><use href="#i-bank"/></svg>Home Expense Guardian</h2>
                     </div>
-
-                    <p class="card-sub">Remember rent, bills and money for home. A reminder never moves money.</p>
 
                     <div id="homeSummary" class="stat-grid"></div>
 
@@ -1182,7 +1293,6 @@
                 <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
                 <div>
                     <h1>HE — Home Expenses</h1>
-                    <p>Pay and remember your home expenses. Kept apart from Pay, with its own history.</p>
                 </div>
             </div>
 
@@ -1347,8 +1457,7 @@
                         <div><label for="heRemYearlyTime">At</label><input type="time" id="heRemYearlyTime" value="09:00"></div>
                     </div>
 
-                    <p class="hint">A reminder shows in your Monetra notifications from the chosen time, while Monetra is open.
-                        It never moves money.</p>
+                    <p class="hint">Reminders show in notifications while Monetra is open.</p>
 
                     <button type="submit" class="btn-gold">Save Reminders</button>
 
@@ -1381,7 +1490,6 @@
                 <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
                 <div>
                     <h1>Notifications</h1>
-                    <p>Payments you sent, received or that need attention.</p>
                 </div>
             </div>
 
@@ -1403,8 +1511,6 @@
 
             <div class="card">
                 <h2>Guardian notifications</h2>
-
-                <p class="card-sub">Choose what the Guardian reminds you about. Each notice is sent once.</p>
 
                 <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending: close to or over your limit</label>
                 <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans: EMI coming up, due today or not marked paid</label>

@@ -17,7 +17,8 @@ import java.util.Map;
 
 /**
  * Talks to any "OpenAI-compatible" chat API. That covers free options such as
- * Google Gemini (free tier), Groq (free tier), OpenRouter free models and Ollama running on this computer.
+ * Groq (free tier, for example openai/gpt-oss-120b), Google Gemini (free tier), OpenRouter free models
+ * and Ollama running on this computer.
  *
  * Set AI_BASE_URL, AI_MODEL and (except for a local Ollama) AI_API_KEY. See the README for examples.
  */
@@ -75,7 +76,7 @@ public class OpenAiCompatibleClient implements AiProvider {
     }
 
     @Override
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings("unchecked")
     public Ai.Step step(String system, List<Ai.Turn> conversation, List<Map<String, Object>> tools, int maxTokens) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -97,6 +98,8 @@ public class OpenAiCompatibleClient implements AiProvider {
         if (tools != null && !tools.isEmpty()) {
             request.put("tools", wireTools(tools));
         }
+
+        reasoningSettings(request, baseUrl, model, maxTokens);
 
         String url = baseUrl.endsWith("/") ? baseUrl + "chat/completions" : baseUrl + "/chat/completions";
 
@@ -144,6 +147,25 @@ public class OpenAiCompatibleClient implements AiProvider {
         }
 
         return new Ai.Step(text, calls);
+    }
+
+    /**
+     * Reasoning models such as OpenAI's gpt-oss (which Groq serves) think before they answer, and that
+     * thinking uses the same token budget as the answer. Monetra only wants a short answer, so these
+     * models are asked to think briefly and are given room for it. On Groq the thinking itself is not
+     * sent back. Other models are left exactly as they were.
+     */
+    static void reasoningSettings(Map<String, Object> request, String baseUrl, String model, int maxTokens) {
+        if (model == null || !model.toLowerCase().contains("gpt-oss")) {
+            return;
+        }
+
+        request.put("reasoning_effort", "low");
+        request.put("max_tokens", maxTokens + 1024);
+
+        if (baseUrl != null && baseUrl.contains("api.groq.com")) {
+            request.put("include_reasoning", false);
+        }
     }
 
     /** Our neutral turns, as the OpenAI chat format wants them. */

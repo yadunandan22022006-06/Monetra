@@ -193,7 +193,7 @@ public class HomeExpenseService {
             }
         }
 
-        out.sort(Comparator.comparing(Row::due).thenComparing(r -> r.expense().name));
+        out.sort(Comparator.comparing((Row r) -> r.due()).thenComparing(r -> r.expense().name));
 
         return out;
     }
@@ -227,7 +227,7 @@ public class HomeExpenseService {
 
         BigDecimal overdueAmount = overdue.stream()
                 .map(r -> r.expense().amount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("date", today.toString());
@@ -280,7 +280,7 @@ public class HomeExpenseService {
         out.put("totalPaid", totalPaid);
         out.put("totalOutstanding", totalOutstanding);
         out.put("items", rows.size());
-        out.put("rows", rows.stream().map(Row::toMap).collect(Collectors.toList()));
+        out.put("rows", rows.stream().map(r -> r.toMap()).collect(Collectors.toList()));
         return out;
     }
 
@@ -415,7 +415,7 @@ public class HomeExpenseService {
     public BigDecimal unpaidTotal(Long userId, LocalDate today, int days) {
         return actionable(userId, today, days).stream()
                 .map(r -> r.expense().amount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
     /** Simple helper: every category name that exists, for the add form. */

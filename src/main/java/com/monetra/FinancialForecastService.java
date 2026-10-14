@@ -21,7 +21,11 @@ public class FinancialForecastService {
      * Null when the user never gave a balance.
      */
     public BigDecimal availableBalance(JsonNode data) {
-        JsonNode profile = data == null ? null : data.get("profile");
+        if (data == null) {
+            return null;
+        }
+
+        JsonNode profile = data.get("profile");
 
         if (profile == null || !profile.path("balance").isNumber()) {
             return null;
@@ -92,7 +96,7 @@ public class FinancialForecastService {
         out.put("savingsContributions", BudgetRules.money(savingsContributions));
         out.put("bills", BudgetRules.money(bills));
 
-        if (!known) {
+        if (expectedIncome == null || !known) {
             /* Without an income the forecast is incomplete: say so instead of guessing one. */
             return out;
         }

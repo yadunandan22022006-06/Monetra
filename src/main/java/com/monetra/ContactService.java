@@ -175,7 +175,7 @@ public class ContactService {
             throw new IllegalArgumentException("Send at most " + MAX_IMPORT + " contacts at a time.");
         }
 
-        String own = users.findById(userId).map(UserAccount::getPhoneKey).orElse("");
+        String own = users.findById(userId).map(u -> u.getPhoneKey()).orElse("");
 
         Map<String, Contact> existing = new HashMap<>();
 

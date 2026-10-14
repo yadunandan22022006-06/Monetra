@@ -61,7 +61,7 @@ public class AnthropicClient implements AiProvider {
     }
 
     @Override
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings("unchecked")
     public Ai.Step step(String system, List<Ai.Turn> conversation, List<Map<String, Object>> tools, int maxTokens) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("x-api-key", apiKey);

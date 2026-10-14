@@ -16,12 +16,15 @@ Monetra does not just tell you how much you are spending. Before you pay, one an
 | **Loan repayment** | Your available balance, EMIs, home bills and essential expenses before your next income | "Your projected balance would be -₹1,000.00. That is NOT enough to cover them, so you may fall short." |
 | **Savings goals** | The goal you are saving for, your plan and whether you are behind it | "If this payment comes from that savings, the amount you still need rises from ₹40,000.00 to ₹45,000.00." |
 
-- **On the review screen** each warning that applies is shown in its own red box (Daily limit exceeded, Payment risk, Loan repayment risk, Savings goal impact, Your decision), with a risk level for each area and an overall status. A payment that fits shows no warning. You can **Go Back**, **Adjust Amount**, **Review Budget** or **Continue Anyway**: the user always decides.
-- **On Home** three cards (Daily Budget, Loan Guardian, Savings Goals) open their pages.
+- **On the review screen** every warning is one numbered red box (①, ②, ③ ...): daily limit exceeded, payment risk, loans and bills, savings goal, Fraud Guard. Each box says what is wrong and what you could do about it, and each fact appears **once**. The last box is **YOUR DECISION**, where the AI's short advice appears. A payment that fits shows no red box. You can **Go Back**, **Adjust Amount**, **Review Budget** or **Continue Anyway**: the user always decides.
+- **On Home**, the two main buttons come first: **Send Money** and **Check Balance**, side by side and styled alike. Then **Safe to Spend Today**: how much you can spend today without touching the EMIs, bills, essential expenses, planned goal savings and emergency buffer that fall before your next income. It counts only your own balance (nothing borrowed) and goes down with every expense you record. Below it, three cards (Daily Budget, Loan Guardian, Savings Goals) open their pages.
 - **Loans**: outstanding balance, EMI, due date, interest rate, installments left, frequency and status; an EMI calendar; "Mark EMI paid"; and a next-month forecast (expected income minus EMIs, essentials, bills and planned savings).
 - **Savings goals**: target date, planned monthly saving and priority; what to save a day, a week or a month to reach the date; a real shortfall when you fall behind your plan; and advice that never asks for more than is free after EMIs and essentials.
 - **My money** (in Spending): available balance, monthly income, income day, essential expenses and an optional buffer. The balance moves by itself with every payment and expense recorded.
 - Every figure is calculated in Java with decimal arithmetic (`DailyBudgetService`, `LoanRepaymentService`, `SavingsGoalService`, `FinancialForecastService`, `GuardianAnalysisService`). The AI only puts the finished sentences into words, and its reply is thrown away if it changes a number, softens a broken limit or drops a warning. When a figure is missing, Monetra says what it cannot check instead of guessing.
+- **Smart Buy Planner** (Savings → Buy Planner): type what you want and its price, and optionally the day you want it, how much you can save a month and a priority. Monetra follows your money day by day for 12 months (income, every EMI and bill on its date, essentials and goal savings) and tells you whether it is safe to buy today, the earliest safe day, and how much to put aside a day, week or month. "Track this plan" turns it into a savings goal so its progress is tracked.
+- **Scam Shield** (Monetra Guardian → AI & Payments → Scam Shield): paste an SMS, a WhatsApp message, a payment request or a link. Java rules look for the tricks Indian payment scams use (PIN or OTP requests, "enter your PIN to receive money", QR refunds, KYC or electricity cut-off threats, lottery prizes, screen-sharing apps, "digital arrest", easy-money jobs, hidden links) and give a LOW, MEDIUM or HIGH risk with the reasons and the suspicious words marked. The message is not saved or logged, and the AI only sees what the rules found, never the message itself. "Is this result wrong?" saves a report, with the message only if you tick that you agree.
+- **Check Balance and My bank accounts** (Setu Account Aggregator, sandbox): "Link Bank Account" sends you to Setu's own consent screens, where you choose your bank, verify with an OTP and approve. Monetra never sees a bank password, PIN or OTP, and keeps only the masked account number. Check Balance then shows the account, the balance the bank returned and when it was last checked, with a Refresh Balance button. It updates by itself when Monetra opens and then once an hour while it stays open (a consent allows at most one data request an hour). When a check fails, the last real balance stays on screen marked "may be out of date"; a balance is never made up. Several accounts can be linked; one is the main account, and removing an account revokes its consent at Setu first. Without Setu keys the screen says exactly which ones are missing.
 - **Notifications** (each sent once, and you can switch each area off): close to or over the daily limit, EMI coming up, due today or not marked paid, a possible shortfall before the next EMI, savings reminders, progress and falling behind. They are created while Monetra is open; nothing is sent in the background.
 
 ## HE: Home Expenses
@@ -138,7 +141,7 @@ Monetra's AI works with any provider that speaks the common "OpenAI chat" format
 | Option | Cost | Set these |
 |---|---|---|
 | **Google Gemini** (free tier, key from [Google AI Studio](https://aistudio.google.com/apikey)) | Free tier with rate limits | `AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `AI_MODEL=<a current Gemini flash model id>`, `AI_API_KEY=<your key>` |
-| **Groq** (free tier, key from [console.groq.com](https://console.groq.com)) | Free tier with rate limits | `AI_BASE_URL=https://api.groq.com/openai/v1`, `AI_MODEL=llama-3.3-70b-versatile` (or another model that supports tools), `AI_API_KEY=<your key>` |
+| **Groq** (recommended online option: free tier, key from [console.groq.com](https://console.groq.com)) | Free tier with rate limits | `AI_BASE_URL=https://api.groq.com/openai/v1`, `AI_MODEL=openai/gpt-oss-120b` (or `openai/gpt-oss-20b`; `llama-3.3-70b-versatile` was retired in August 2026), `AI_API_KEY=<your key>`. In `start-local.ps1`, just paste the key into `$groqKey`. `render.yaml` already sets the address and model, so on Render only `AI_API_KEY` is needed. |
 | **Ollama** (runs on your own computer, [ollama.com](https://ollama.com)) | Free and unlimited, no key, works offline | install Ollama, run `ollama pull llama3.2`, then `AI_BASE_URL=http://localhost:11434/v1`, `AI_MODEL=llama3.2` |
 
 Windows PowerShell example:
@@ -150,7 +153,7 @@ $env:AI_API_KEY = 'paste-your-free-key'
 .\mvnw.cmd spring-boot:run
 ```
 
-The chat needs a model that supports **tool calling**. If a small model answers badly, try a larger one. Never commit your key.
+The chat needs a model that supports **tool calling**. If a small model answers badly, try a larger one. Reasoning models (gpt-oss) are asked to think briefly (`reasoning_effort: low`) so their short notices are not cut off. Never commit your key.
 
 ## Security rules in the code
 
@@ -173,6 +176,9 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 | `PaypalWebhookController` | Verified PayPal webhooks |
 | `BudgetRules`, `FraudRules`, `HomeExpenseRules` | Deterministic, unit-tested rules |
 | `GuardianAnalysisService`, `DailyBudgetService`, `LoanRepaymentService`, `SavingsGoalService`, `FinancialForecastService` | The Financial Guardian: one combined analysis of limits, loans and goals, the dashboard figures and the notifications |
+| `SetuAaClient`, `BankService`, `BankController`, `BankLink`, `BankAccount` | My bank accounts and Check Balance through Setu's Account Aggregator (consents, data sessions, balances) |
+| `PurchasePlannerService` | Smart Buy Planner: the day-by-day money plan and the earliest safe day to buy |
+| `ScamShieldService`, `ScamReport` | Scam Shield rules, and "this result is wrong" reports (the message only with consent) |
 | `NumberGuard`, `RecordsValidator` | Checks on what the AI writes and on the loan, goal and money figures a user saves |
 | `HeController`, `HePayment` | HE: home expense payments and their history |
 | `AgentController`, `AgentTools`, `AiService`, `OpenAiCompatibleClient`, `AnthropicClient` | The AI agent and its tools |
@@ -186,7 +192,7 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 ./mvnw test
 ```
 
-The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports), contacts privacy, and the **Financial Guardian** (daily limit, loan repayment, next-month forecast and savings-goal sums; one payment checked against all three; notifications sent once; the HE payment methods, with cash and bank transfers recorded only on confirmation and PayPal ones verified; refused bad figures; and one user never seeing another's loans, goals or forecasts).
+The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports), contacts privacy, and the **Financial Guardian** (daily limit, loan repayment, next-month forecast and savings-goal sums; one payment checked against all three; notifications sent once; the HE payment methods, with cash and bank transfers recorded only on confirmation and PayPal ones verified; refused bad figures; and one user never seeing another's loans, goals or forecasts), **Safe to Spend Today**, the **Smart Buy Planner** (worked-out dates and amounts), **Scam Shield** (risk levels, no message kept without consent) and review boxes that never say the same thing twice.
 
 ## API collection
 
@@ -202,6 +208,8 @@ Import `postman/monetra.postman_collection.json` into **Postman**. Log in first;
 |---|---|
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal Sandbox credentials |
 | `PAYPAL_WEBHOOK_ID` | Webhook id, so PayPal events are accepted |
+| `SETU_AA_CLIENT_ID`, `SETU_AA_CLIENT_SECRET`, `SETU_AA_PRODUCT_INSTANCE_ID` | Setu Account Aggregator keys for Check Balance (from bridge.setu.co, your FIU data product) |
+| `SETU_AA_BASE_URL` | Optional. `https://fiu-sandbox.setu.co` (the default) or Setu's production gateway |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` | A FREE AI (Gemini, Groq, Ollama): see "Free AI" (optional) |
 | `ANTHROPIC_API_KEY` | Claude instead (paid, optional) |
 | `AI_PROVIDER` | `openai` or `anthropic` to force one (empty chooses automatically) |
@@ -215,6 +223,7 @@ Import `postman/monetra.postman_collection.json` into **Postman**. Log in first;
 ## Honest limitations
 
 - **Sandbox only.** Test money. Going live needs a live PayPal merchant account and review.
+- **Check Balance uses Setu's sandbox:** its accounts and balances are Setu's test data, not a real bank. Reading real bank accounts through the Account Aggregator network needs Setu's production approval, and FIUs must be regulated entities (RBI, SEBI, IRDAI or PFRDA).
 - Payouts need **Payouts enabled** on your PayPal app and a **balance** in the Sandbox business account. If a payout fails, the payment stays confirmed and the receiver sees the payout status, with a retry button.
 - A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Bank transfer and Cash are records of what you paid yourself; a real bank transfer would need a different payment provider.- Account balances and spending are **entered by you**, not read from a bank.
 - The per-payment lock is in-process, so run a single server instance.

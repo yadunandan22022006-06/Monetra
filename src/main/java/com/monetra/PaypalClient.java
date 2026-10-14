@@ -136,8 +136,8 @@ public class PaypalClient {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> read(ResponseEntity<Map> response) {
-        Map<String, Object> body = response.getBody();
+    private static Map<String, Object> read(ResponseEntity<?> response) {
+        Map<String, Object> body = response.getBody() instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
 
         if (body == null) {
             throw new IllegalStateException("Empty response from PayPal.");

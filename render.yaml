@@ -15,6 +15,20 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Free online AI (Groq). Paste your Groq key into AI_API_KEY in the Render dashboard.
+      - key: AI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: AI_MODEL
+        value: openai/gpt-oss-120b
+      - key: AI_API_KEY
+        sync: false
+      # Check Balance (Setu Account Aggregator sandbox), when you have the keys.
+      - key: SETU_AA_CLIENT_ID
+        sync: false
+      - key: SETU_AA_CLIENT_SECRET
+        sync: false
+      - key: SETU_AA_PRODUCT_INSTANCE_ID
+        sync: false
       # Creates the two demo accounts so judges can log in without email OTP.
       - key: MONETRA_SEED_DEMO_USERS
         value: "true"
