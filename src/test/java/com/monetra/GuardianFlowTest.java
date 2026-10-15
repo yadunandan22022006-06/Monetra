@@ -232,20 +232,19 @@ class GuardianFlowTest {
 	void theServerSaysWhatEachPaymentMethodReallyDoes() throws Exception {
 		String methods = gita.get("/api/he/methods").body();
 
-		/* Scan and mobile number go through PayPal. Cash and bank transfers are only recorded. There is no card option. */
+		/* Scan and mobile number go through PayPal. Cash is only recorded. There is no card or bank transfer option. */
 		assertTrue(methods.contains("\"id\":\"SCAN\",\"label\":\"Scan & Pay\",\"kind\":\"PAYPAL\",\"available\":true"), methods);
 		assertTrue(methods.contains("\"id\":\"MOBILE\",\"label\":\"Mobile Number\",\"kind\":\"PAYPAL\",\"available\":true"), methods);
 		assertFalse(methods.contains("CARD"), methods);
 		assertTrue(methods.contains("\"id\":\"MYQR\",\"label\":\"My Payment QR\",\"kind\":\"RECEIVE\""), methods);
 		assertTrue(methods.contains("\"id\":\"CASH\",\"label\":\"Cash\",\"kind\":\"RECORD\""), methods);
-		assertTrue(methods.contains("\"id\":\"BANK\",\"label\":\"Bank Transfer\",\"kind\":\"RECORD\""), methods);
-		assertTrue(methods.contains("Monetra does not start bank transfers"), methods);
+		assertFalse(methods.contains("BANK"), methods);
 
 		assertEquals(401, new Http(port).get("/api/he/methods").statusCode());
 	}
 
 	@Test
-	void cashAndBankTransfersAreRecordedOnlyWhenTheUserConfirmsThem() throws Exception {
+	void cashIsRecordedOnlyWhenTheUserConfirmsIt() throws Exception {
 		Http amma = Http.login(port, "amma@test.dev", "password-a");
 
 		assertEquals("[]", amma.get("/api/he/history").body());
@@ -269,26 +268,17 @@ class GuardianFlowTest {
 		assertEquals(200, amma.post("/api/he/pay", milk).statusCode());
 		assertEquals(1, amma.get("/api/he/history").body().split("\"description\":\"Milk\"", -1).length - 1);
 
-		/* A bank transfer the user made in their bank's app. Only the bank and the last four digits are kept. */
-		assertEquals(400, amma.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":8000,\"method\":\"BANK\","
-				+ "\"recipient\":\"Landlord\",\"confirmed\":true}").statusCode(), "how it was sent is needed");
+		HttpResponse<String> history = amma.get("/api/he/history");
 
+		assertTrue(history.body().contains("\"status\":\"PAID\""), history.body());
+		assertTrue(history.body().contains("\"transactionId\":\"HE-"), history.body());
+
+		/* Bank transfers are no longer an HE method. */
 		assertEquals(400, amma.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":8000,\"method\":\"BANK\",\"transferType\":\"IMPS\","
-				+ "\"recipient\":\"Landlord\",\"accountLast4\":\"123456789012\",\"confirmed\":true}").statusCode(),
-				"a full account number is refused");
-
-		HttpResponse<String> rent = amma.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":8000,\"description\":\"Rent\","
-				+ "\"method\":\"BANK\",\"transferType\":\"IMPS\",\"recipient\":\"Landlord\",\"ifsc\":\"HDFC0001234\","
-				+ "\"accountLast4\":\"4321\",\"reference\":\"UTR998877\",\"confirmed\":true}");
-
-		assertEquals(200, rent.statusCode(), rent.body());
-		assertTrue(rent.body().contains("\"detail\":\"IMPS • HDFC Bank • ••••4321\""), rent.body());
-		assertTrue(rent.body().contains("\"reference\":\"UTR998877\""), rent.body());
-		assertTrue(rent.body().contains("\"status\":\"PAID\""), rent.body());
-		assertTrue(rent.body().contains("\"transactionId\":\"HE-"), rent.body());
+				+ "\"recipient\":\"Landlord\",\"confirmed\":true}").statusCode());
 
 		/* Nobody else sees it. */
-		assertFalse(other.get("/api/he/history").body().contains("Landlord"));
+		assertFalse(other.get("/api/he/history").body().contains("Milkman"));
 	}
 
 	@Test

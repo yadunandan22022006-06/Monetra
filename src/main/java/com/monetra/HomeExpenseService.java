@@ -288,6 +288,13 @@ public class HomeExpenseService {
         return expenses.findByUserIdAndActiveTrueOrderByCreatedAtAsc(userId);
     }
 
+    /** True when the date is a real due date of this user's expense. */
+    public boolean isDueDate(Long userId, Long expenseId, LocalDate due) {
+        HomeExpense e = expenses.findByIdAndUserId(expenseId, userId).orElse(null);
+
+        return e != null && !HomeExpenseRules.occurrences(e.frequency, e.startDate, due, due).isEmpty();
+    }
+
     /* ------------------------------------------------------------------ */
     /* Marking paid                                                        */
     /* ------------------------------------------------------------------ */

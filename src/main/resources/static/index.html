@@ -1244,7 +1244,7 @@
                         </div>
                         <div class="wide">
                             <label for="homePhone">Pay to a mobile number (optional)</label>
-                            <input id="homePhone" type="tel" maxlength="16" placeholder="Lets you pay it with Monetra in one tap">
+                            <input id="homePhone" type="tel" maxlength="16" placeholder="Mobile number">
                         </div>
                     </div>
 
@@ -1322,7 +1322,6 @@
                         <button type="button" data-method="SCAN"><svg class="i"><use href="#i-qr"/></svg>Scan &amp; Pay</button>
                         <button type="button" data-method="MYQR"><svg class="i"><use href="#i-user"/></svg>My Payment QR</button>
                         <button type="button" data-method="MOBILE" class="active"><svg class="i"><use href="#i-phone"/></svg>Mobile Number</button>
-                        <button type="button" data-method="BANK"><svg class="i"><use href="#i-bank"/></svg>Bank Transfer</button>
                         <button type="button" data-method="CASH"><svg class="i"><use href="#i-cash"/></svg>Cash</button>
                     </div>
 
@@ -1368,36 +1367,6 @@
                         <div id="heContactList" class="contact-list hidden" role="listbox" aria-label="Contacts"></div>
 
                         <div id="heRecipientCard" class="recipient-card hidden" aria-live="polite"></div>
-
-                    </div>
-
-                    <!-- Bank Transfer: made in the bank's app, recorded here -->
-
-                    <div id="heBankBox" class="hidden">
-
-                        <div class="two-col">
-                            <div>
-                                <label for="heBankType">Sent by</label>
-                                <select id="heBankType">
-                                    <option value="IMPS" selected>IMPS</option>
-                                    <option value="NEFT">NEFT</option>
-                                    <option value="RTGS">RTGS</option>
-                                    <option value="UPI">UPI</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="heBankName">Paid to</label>
-                                <input id="heBankName" type="text" maxlength="60" placeholder="Name of the person or shop">
-                            </div>
-                            <div>
-                                <label for="heBankLast4">Account, last 4 digits</label>
-                                <input id="heBankLast4" type="text" inputmode="numeric" maxlength="4" placeholder="Optional">
-                            </div>
-                            <div>
-                                <label for="heBankRef">Bank reference / UTR</label>
-                                <input id="heBankRef" type="text" maxlength="40" placeholder="Optional">
-                            </div>
-                        </div>
 
                     </div>
 

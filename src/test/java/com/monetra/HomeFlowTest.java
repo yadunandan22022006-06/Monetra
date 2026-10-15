@@ -123,6 +123,59 @@ class HomeFlowTest {
 		assertFalse(hana.get("/api/home/overview").body().contains("House rent"));
 	}
 
+	@Test
+	void aBillPaidInHeIsMarkedPaidAndNotCountedTwice() throws Exception {
+		users.save(new UserAccount("ravi@test.dev", new BCryptPasswordEncoder().encode("password-r"), "9000000053", "Ravi"));
+		users.save(new UserAccount("sita@test.dev", new BCryptPasswordEncoder().encode("password-s"), "9000000054", "Sita"));
+
+		Http ravi = Http.login(port, "ravi@test.dev", "password-r");
+		Http sita = Http.login(port, "sita@test.dev", "password-s");
+
+		LocalDate today = LocalDate.now();
+
+		assertEquals(200, ravi.put("/api/data", "{\"limits\":{\"daily\":5000},\"profile\":{\"balance\":3000,\"balanceAt\":5,"
+				+ "\"payday\":" + today.plusDays(10).getDayOfMonth() + ",\"monthlyIncome\":40000}}").statusCode());
+
+		HttpResponse<String> power = ravi.post("/api/home/expenses", expense("Electricity", "2000", "Electricity", "MONTHLY", today));
+		assertEquals(200, power.statusCode(), power.body());
+
+		String powerId = Http.number(power.body(), "id");
+		String link = "\"homeExpenseId\":" + powerId + ",\"homeDueDate\":\"" + today + "\"";
+
+		/* Checking any other ₹2,000 payment counts the bill as still to pay; checking the bill's own payment does not. */
+		String other = ravi.post("/api/guardian/check", "{\"amountInr\":2000}").body();
+		String itself = ravi.post("/api/guardian/check", "{\"amountInr\":2000," + link + "}").body();
+
+		assertTrue(other.contains("Electricity"), other);
+		assertFalse(itself.contains("Electricity"), itself);
+
+		/* Cash for someone else's bill, or for a day it is not due, is refused and nothing is recorded. */
+		assertEquals(400, sita.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":2000,\"method\":\"CASH\",\"confirmed\":true,"
+				+ link + "}").statusCode());
+		assertEquals(400, ravi.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":2000,\"method\":\"CASH\",\"confirmed\":true,"
+				+ "\"homeExpenseId\":" + powerId + ",\"homeDueDate\":\"" + today.plusDays(1) + "\"}").statusCode());
+		assertEquals("[]", ravi.get("/api/he/history").body());
+
+		/* Paid in cash through HE: the bill is marked paid, as the user's own word. */
+		HttpResponse<String> cash = ravi.post("/api/he/pay", "{\"type\":\"MONTHLY\",\"amountInr\":2000,\"description\":\"Electricity\","
+				+ "\"method\":\"CASH\",\"confirmed\":true,\"requestId\":\"bill-1\"," + link + "}");
+
+		assertEquals(200, cash.statusCode(), cash.body());
+
+		String overview = ravi.get("/api/home/overview").body();
+
+		assertTrue(overview.contains("\"paidCount\":1"), overview);
+		assertTrue(overview.contains("\"pendingCount\":0"), overview);
+		assertTrue(overview.contains("\"due\":[]"), overview);
+
+		String report = ravi.get("/api/home/report?month=" + java.time.YearMonth.now()).body();
+
+		assertTrue(report.contains("\"paidSource\":\"MANUAL\""), report);
+
+		/* The Guardian no longer counts it. */
+		assertFalse(ravi.post("/api/guardian/check", "{\"amountInr\":2000}").body().contains("Electricity"));
+	}
+
 	private static int count(String text, String part) {
 		return text.split(java.util.regex.Pattern.quote(part), -1).length - 1;
 	}

@@ -51,7 +51,6 @@ const PARENT_VIEW = {
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
 let payConfig = { paypalConfigured: false, webhookConfigured: false };
-let payContext = null;          /* a household expense this payment will settle */
 let guardianTab = 'ai';
 let homeData = null;
 let homeMonth = '';
@@ -758,6 +757,7 @@ function closeDashboard(note) {
     $('guardianBadge').classList.add('hidden');
 
     heDrafts = {};
+    heBill = null;
     heMethod = 'MOBILE';
     heMethodInfo = {};
     hePayee = null;
@@ -862,8 +862,12 @@ function navigateTo(viewId, action) {
         loadHeMethods();
         loadHe();
 
-    } else if (scanner === SCANNERS.he) {
-        stopScan();
+    } else {
+        heBill = null;
+
+        if (scanner === SCANNERS.he) {
+            stopScan();
+        }
     }
 
     if (viewId === 'homeView' || viewId === 'loanView' || viewId === 'goalView') {
@@ -1062,7 +1066,6 @@ function resetPayForm() {
     payee = null;
     scannedName = '';
     draft = null;
-    payContext = null;
     reviewRun++;
 
     $('recipientCard').classList.add('hidden');
@@ -1917,11 +1920,6 @@ $('paymentForm').addEventListener('submit', function(event) {
         }
 
         draft = { ...base, recipientPhone: key, scannedName: payMethod === 'QR' ? scannedName : '' };
-    }
-
-    if (payContext) {
-        draft.homeExpenseId = payContext.homeExpenseId;
-        draft.homeDueDate = payContext.homeDueDate;
     }
 
     startReview();
@@ -4440,21 +4438,17 @@ function renderHome() {
 
         paid.type = 'button';
 
-        paid.title = 'Records that you paid this yourself. It is not verified by PayPal.';
-
         paid.addEventListener('click', () => markHomePaid(row));
 
         actions.appendChild(paid);
 
-        if (row.recipientPhone) {
-            const pay = makeElement('button', 'btn-gold', 'Pay with Monetra');
+        const pay = makeElement('button', 'btn-gold', 'Pay with Monetra');
 
-            pay.type = 'button';
+        pay.type = 'button';
 
-            pay.addEventListener('click', () => payHomeExpense(row));
+        pay.addEventListener('click', () => payHomeExpense(row));
 
-            actions.appendChild(pay);
-        }
+        actions.appendChild(pay);
 
         left.appendChild(actions);
 
@@ -4617,27 +4611,26 @@ async function deleteHomeExpense(expense) {
     }
 }
 
-/* Pays a household expense through Monetra. When PayPal confirms it, it is marked paid by itself. */
+/* Pays a planned household bill in HE. It is marked paid when PayPal confirms it, or when cash is recorded. */
 
 function payHomeExpense(row) {
-    navigateTo('paymentView', 'send');
+    navigateTo('heView');
 
-    resetPayForm();
+    showSubtab('he', 'pay');
 
-    setMethod('PHONE');
+    showHeType(row.frequency === 'DAILY' ? 'DAILY' : row.frequency === 'YEARLY' ? 'YEARLY' : 'MONTHLY');
 
-    $('payPhone').value = row.recipientPhone;
-    $('payAmount').value = Number(row.amount);
-    $('payNote').value = row.name;
+    heBill = { expenseId: row.expenseId, dueDate: row.dueDate, name: row.name };
 
-    $('phoneBox').classList.remove('hidden');
+    $('heAmount').value = Number(row.amount);
+    $('heNote').value = row.name;
+    $('hePhone').value = row.recipientPhone || '';
 
-    payContext = { homeExpenseId: row.expenseId, homeDueDate: row.dueDate };
+    setHeMethod('MOBILE');
 
-    $('paymentMessage').textContent =
-        'Paying ' + row.name + ' (due ' + displayDate(row.dueDate) + '). It is marked paid once PayPal confirms it.';
-
-    lookupRecipient();
+    if (row.recipientPhone) {
+        lookupHeRecipient();
+    }
 }
 
 $('homeForm').addEventListener('submit', async function(event) {
@@ -4683,11 +4676,11 @@ $('homeNextMonth').addEventListener('click', () => {
 
 /* ==============================
    HE: HOME EXPENSES
-   Kept apart from Pay: three payment options (Daily, Monthly, Yearly), five payment
+   Kept apart from Pay: three payment options (Daily, Monthly, Yearly), four payment
    methods, their own reminders and their own transaction history.
 
    Scan & Pay and Mobile Number are paid through PayPal and are only ever shown as
-   successful when PayPal confirms them. Cash and Bank Transfer are recorded, not sent.
+   successful when PayPal confirms them. Cash is recorded, not sent.
 ================================ */
 
 const HE_TYPES = { DAILY: 'Daily', MONTHLY: 'Monthly', YEARLY: 'Yearly' };
@@ -4696,7 +4689,7 @@ const HE_METHODS = {
     SCAN: 'Scan & Pay',
     MYQR: 'My Payment QR',
     MOBILE: 'Mobile number',
-    BANK: 'Bank transfer',
+    BANK: 'Bank transfer',      /* only for bank transfers recorded before the option was removed */
     CASH: 'Cash'
 };
 
@@ -4717,7 +4710,6 @@ const HE_DEFAULT_HOW = {
     SCAN: 'Scan a QR code. You approve on PayPal.',
     MYQR: 'Your QR code, for others to pay you.',
     MOBILE: 'Pay a mobile number. You approve on PayPal.',
-    BANK: 'Monetra does not start bank transfers. Pay in your bank\'s app, then record it here.',
     CASH: 'Record cash you paid. No money moves.'
 };
 
@@ -4731,8 +4723,9 @@ let heLookupTimer = null;
 let heBusy = false;             /* one payment at a time, however often Pay Now is pressed */
 let heOpenRow = '';             /* the history row whose details are open */
 let heDrafts = {};              /* what is typed into each option's form: Daily, Monthly and Yearly keep their own */
+let heBill = null;              /* a planned household bill this payment settles: { expenseId, dueDate, name } */
 
-const HE_DRAFT_FIELDS = ['heAmount', 'heNote', 'hePhone', 'heBankType', 'heBankName', 'heBankLast4', 'heBankRef', 'heCashTo'];
+const HE_DRAFT_FIELDS = ['heAmount', 'heNote', 'hePhone', 'heCashTo'];
 
 function isHePaypal(method) {
     return method === 'SCAN' || method === 'MOBILE';
@@ -4772,7 +4765,7 @@ function renderHeForm() {
         button.classList.toggle('active', button.dataset.he === heType);
     });
 
-    $('heFormTitle').textContent = HE_TYPES[heType] + ' HE Payment';
+    $('heFormTitle').textContent = heBill ? heBill.name : HE_TYPES[heType] + ' HE Payment';
 
     document.querySelectorAll('#heMethods button').forEach(button => {
         const info = heMethodInfo[button.dataset.method];
@@ -4790,7 +4783,6 @@ function renderHeForm() {
     $('heScanBox').classList.toggle('hidden', heMethod !== 'SCAN');
     $('heQrBox').classList.toggle('hidden', heMethod !== 'MYQR');
     $('hePayeeBox').classList.toggle('hidden', !(heMethod === 'MOBILE' || (heMethod === 'SCAN' && heScanned)));
-    $('heBankBox').classList.toggle('hidden', heMethod !== 'BANK');
     $('heCashBox').classList.toggle('hidden', heMethod !== 'CASH');
     $('heAmountRow').classList.toggle('hidden', heMethod === 'MYQR');
 
@@ -4810,7 +4802,7 @@ function renderHeForm() {
 }
 
 function setHeMethod(method) {
-    if (!HE_METHODS[method]) {
+    if (!document.querySelector('#heMethods button[data-method="' + method + '"]')) {
         return;
     }
 
@@ -4833,6 +4825,8 @@ document.querySelectorAll('#heMethods button').forEach(button => {
 function showHeType(type) {
     keepHeDraft();
 
+    heBill = null;
+
     stopScan();
 
     heType = HE_TYPES[type] ? type : 'DAILY';
@@ -4840,7 +4834,7 @@ function showHeType(type) {
     const saved = heDrafts[heType] || {};
 
     HE_DRAFT_FIELDS.forEach(id => {
-        $(id).value = saved[id] || (id === 'heBankType' ? 'IMPS' : '');
+        $(id).value = saved[id] || '';
     });
 
     heMethod = saved.method || 'MOBILE';
@@ -5023,12 +5017,6 @@ function applyHeScan(payeeInfo) {
     return true;
 }
 
-/* Bank Transfer: only the last four digits of an account are ever typed or kept. */
-
-$('heBankLast4').addEventListener('input', function() {
-    this.value = this.value.replace(/\D/g, '').slice(0, 4);
-});
-
 /* ---------- reminders ---------- */
 
 function renderHeReminders() {
@@ -5200,36 +5188,15 @@ $('heRefresh').addEventListener('click', loadHe);
 
 /* ---------- Pay Now ---------- */
 
-/* Cash and Bank Transfer: nothing is sent. It is recorded once the user confirms they really paid. */
+/* Cash: nothing is sent. It is recorded once the user confirms they really paid. */
 
 async function recordHePayment(amount, description, label) {
-    const body = { type: heType, amountInr: amount, description, method: heMethod, confirmed: true };
+    const body = { type: heType, amountInr: amount, description, method: heMethod, confirmed: true, ...heBillLink() };
 
-    let question;
+    body.recipient = $('heCashTo').value.trim();
 
-    if (heMethod === 'CASH') {
-        body.recipient = $('heCashTo').value.trim();
-
-        question = 'Did you pay ' + money(amount) + ' in cash' + (body.recipient ? ' to ' + body.recipient : '') + '?\n\n' +
-            'Monetra will mark this ' + label.toLowerCase() + ' as paid. No money is moved.';
-
-    } else {
-        body.recipient = $('heBankName').value.trim();
-        body.transferType = $('heBankType').value;
-        body.accountLast4 = $('heBankLast4').value.trim();
-        body.reference = $('heBankRef').value.trim();
-
-        if (!body.recipient) {
-            throw new Error('Enter who you paid.');
-        }
-
-        if (body.accountLast4 && !/^[0-9]{4}$/.test(body.accountLast4)) {
-            throw new Error('Enter only the last 4 digits of the account number, or leave it empty.');
-        }
-
-        question = 'Have you already sent ' + money(amount) + ' to ' + body.recipient + ' by ' + body.transferType +
-            ' from your bank\'s app?\n\nMonetra does not make bank transfers. It only records this one as paid.';
-    }
+    const question = 'Did you pay ' + money(amount) + ' in cash' + (body.recipient ? ' to ' + body.recipient : '') + '?\n\n' +
+        'Monetra will mark this ' + label.toLowerCase() + ' as paid. No money is moved.';
 
     if (!await askConfirm(question, 'Yes, record it', 'No')) {
         return 'Nothing was recorded.';
@@ -5239,16 +5206,31 @@ async function recordHePayment(amount, description, label) {
 
     await postJson('/api/he/pay', body, 15000);
 
-    ['heAmount', 'heNote', 'heBankName', 'heBankLast4', 'heBankRef', 'heCashTo'].forEach(id => {
+    ['heAmount', 'heNote', 'heCashTo'].forEach(id => {
         $(id).value = '';
     });
+
+    const settled = !!heBill;
+
+    heBill = null;
 
     showPaymentResult('✅ ' + label + ' of ' + money(amount) + ' recorded as paid (' + HE_METHODS[heMethod].toLowerCase() +
         '). Monetra moved no money.', 'good-box', 'heResult');
 
     await loadHe();
 
+    if (settled) {
+        loadHome();
+        loadOverview();
+    }
+
     return '';
+}
+
+/* The planned bill this payment settles, for the server. */
+
+function heBillLink() {
+    return heBill ? { homeExpenseId: heBill.expenseId, homeDueDate: heBill.dueDate } : {};
 }
 
 /* Scan & Pay and Mobile Number: the Guardian and Fraud Guard check it, then PayPal's own page takes over. */
@@ -5287,7 +5269,8 @@ async function startHePaypalPayment(amount, description, label) {
         amountInr: amount,
         description: description || label,
         heType,
-        heMethod
+        heMethod,
+        ...heBillLink()
     };
 
     $('heMessage').textContent = 'Checking with the Guardian...';

@@ -19,15 +19,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * HE: home expenses. A daily, monthly or yearly home expense is paid in one of five ways.
+ * HE: home expenses. A daily, monthly or yearly home expense is paid in one of four ways.
  *
  * Paid through PayPal (the configured sandbox): Scan and Pay, and Mobile number. These are
  * ordinary Monetra payments marked with their HE type, so they are created, approved on PayPal and
  * verified by the server exactly like any other payment.
  *
- * Recorded only, no money moved: Cash and Bank transfer. PayPal cannot send money to an Indian
- * bank account, so Monetra never starts a bank transfer; the user makes it in their bank's app
- * and records it here.
+ * Recorded only, no money moved: Cash. Bank transfers were removed from HE; ones recorded before
+ * still show in the history.
  *
  * My Payment QR is how the user gets paid: their own Monetra QR code.
  */
@@ -37,18 +36,20 @@ public class HeController {
 
     private static final Set<String> TYPES = Set.of("DAILY", "MONTHLY", "YEARLY");
     private static final Set<String> DIGITAL = Set.of("SCAN", "MOBILE");
-    private static final Set<String> RECORDED = Set.of("CASH", "BANK");
-    private static final Set<String> TRANSFERS = Set.of("NEFT", "IMPS", "RTGS", "UPI");
+    private static final Set<String> RECORDED = Set.of("CASH");
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("10000000");
 
     private final HePaymentRepository recorded;
     private final PaymentRepository payments;
     private final PaypalClient paypal;
+    private final HomeExpenseService home;
 
-    public HeController(HePaymentRepository recorded, PaymentRepository payments, PaypalClient paypal) {
+    public HeController(HePaymentRepository recorded, PaymentRepository payments, PaypalClient paypal,
+            HomeExpenseService home) {
         this.recorded = recorded;
         this.payments = payments;
         this.paypal = paypal;
+        this.home = home;
     }
 
     /** DAILY, MONTHLY or YEARLY, or null for anything else. */
@@ -90,9 +91,6 @@ public class HeController {
         out.add(method("MOBILE", "Mobile Number", "PAYPAL", ready,
                 ready ? "Pay a mobile number. You approve on PayPal." : notReady));
 
-        out.add(method("BANK", "Bank Transfer", "RECORD", true,
-                "Monetra does not start bank transfers. Pay in your bank's app, then record it here."));
-
         out.add(method("CASH", "Cash", "RECORD", true,
                 "Record cash you paid. No money moves."));
 
@@ -100,7 +98,6 @@ public class HeController {
         body.put("provider", "PayPal Sandbox");
         body.put("providerReady", ready);
         body.put("methods", out);
-        body.put("transferTypes", List.of("NEFT", "IMPS", "RTGS", "UPI"));
         return ResponseEntity.ok(body);
     }
 
@@ -131,8 +128,9 @@ public class HeController {
     }
 
     /**
-     * Records a home expense the user paid in cash or by their own bank transfer. Nothing is sent
-     * anywhere, and it is only recorded when the user confirms they really paid.
+     * Records a home expense the user paid in cash. Nothing is sent
+     * anywhere, and it is only recorded when the user confirms they really paid. When it is for a
+     * planned household bill, that due date is marked paid too (as the user's own word, MANUAL).
      */
     @PostMapping("/pay")
     public ResponseEntity<?> pay(@RequestBody Map<String, Object> body, HttpSession session) {
@@ -151,7 +149,7 @@ public class HeController {
         String method = upper(body.get("method"));
 
         if (!RECORDED.contains(method)) {
-            return bad("Only cash and bank transfers are recorded here. Other methods are paid through PayPal.");
+            return bad("Only cash is recorded here. Other methods are paid through PayPal.");
         }
 
         if (!Boolean.TRUE.equals(body.get("confirmed"))) {
@@ -182,6 +180,16 @@ public class HeController {
             }
         }
 
+        GuardianAnalysisService.Settles bill = null;
+
+        if (body.get("homeExpenseId") != null) {
+            bill = GuardianAnalysisService.Settles.from(body.get("homeExpenseId"), body.get("homeDueDate"));
+
+            if (bill == null || !home.isDueDate(userId, bill.expenseId(), bill.due())) {
+                return bad("That household expense is not valid.");
+            }
+        }
+
         HePayment p = new HePayment();
         p.userId = userId;
         p.type = type;
@@ -191,39 +199,14 @@ public class HeController {
         p.recipient = RecipientResolver.text(body.get("recipient"), 60);
         p.requestId = requestId.isEmpty() ? null : requestId;
 
-        if ("BANK".equals(method)) {
-            String transfer = upper(body.get("transferType"));
-
-            if (!TRANSFERS.contains(transfer)) {
-                return bad("Choose how you sent it: NEFT, IMPS, RTGS or UPI.");
-            }
-
-            if (p.recipient.isEmpty()) {
-                return bad("Enter who you paid.");
-            }
-
-            String ifsc = upper(body.get("ifsc"));
-            String last4 = RecipientResolver.text(body.get("accountLast4"), 20);
-
-            if (!ifsc.isEmpty() && !BankDirectory.validIfsc(ifsc)) {
-                return bad("Enter a valid IFSC code, for example HDFC0001234, or leave it empty.");
-            }
-
-            if (!last4.isEmpty() && !last4.matches("[0-9]{4}")) {
-                return bad("Enter only the last 4 digits of the account number, or leave it empty.");
-            }
-
-            /* Only the bank's name and the last four digits are kept. */
-
-            p.detail = transfer
-                    + (ifsc.isEmpty() ? "" : " • " + BankDirectory.bankName(ifsc))
-                    + (last4.isEmpty() ? "" : " • ••••" + last4);
-
-            p.reference = RecipientResolver.text(body.get("reference"), 40);
-        }
-
         try {
-            return ResponseEntity.ok(row(recorded.save(p)));
+            HePayment saved = recorded.save(p);
+
+            if (bill != null) {
+                home.recordPaid(userId, bill.expenseId(), bill.due(), "MANUAL", "HE-" + saved.id);
+            }
+
+            return ResponseEntity.ok(row(saved));
 
         } catch (RuntimeException duplicate) {
             /* Two presses arrived together: the first one was saved. */

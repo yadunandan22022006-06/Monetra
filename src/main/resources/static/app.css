@@ -1515,10 +1515,10 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 }
 
 /* ==========================================================
-   HE: six payment methods, and a history with details
+   HE: four payment methods, and a history with details
    ========================================================== */
 
-.method-tabs.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.method-tabs.tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .method-tabs button:disabled { opacity: 0.4; cursor: not-allowed; }
 

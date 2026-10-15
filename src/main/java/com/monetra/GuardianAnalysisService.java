@@ -122,7 +122,30 @@ public class GuardianAnalysisService {
         }
     }
 
+    /** The household bill a payment settles: that due date is not counted as still to pay. */
+    public record Settles(Long expenseId, LocalDate due) {
+
+        /** From a request's homeExpenseId and homeDueDate, or null when they are missing or not valid. */
+        public static Settles from(Object expenseId, Object due) {
+            try {
+                return expenseId == null ? null
+                        : new Settles(Long.valueOf(String.valueOf(expenseId)), LocalDate.parse(String.valueOf(due)));
+
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+
+        boolean is(HomeExpenseService.Row r) {
+            return r.expense().id.equals(expenseId) && r.due().equals(due);
+        }
+    }
+
     private Position position(Long userId, JsonNode data, LocalDate today) {
+        return position(userId, data, today, null);
+    }
+
+    private Position position(Long userId, JsonNode data, LocalDate today, Settles settles) {
         JsonNode profile = data.path("profile");
 
         LocalDate payday = forecasts.nextPayday(data, today);
@@ -136,6 +159,10 @@ public class GuardianAnalysisService {
         String nextBill = "";
 
         for (HomeExpenseService.Row r : home.actionable(userId, today, (int) days)) {
+            if (settles != null && settles.is(r)) {
+                continue;
+            }
+
             bills = bills.add(r.expense().amount);
 
             if (nextBill.isEmpty()) {
@@ -187,7 +214,12 @@ public class GuardianAnalysisService {
      * apply, plain notes for what is fine, possible alternatives and what could not be checked.
      */
     public Map<String, Object> review(Long userId, JsonNode data, BigDecimal amount, String recipient, LocalDate today) {
-        Position pos = position(userId, data, today);
+        return review(userId, data, amount, recipient, today, null);
+    }
+
+    public Map<String, Object> review(Long userId, JsonNode data, BigDecimal amount, String recipient, LocalDate today,
+            Settles settles) {
+        Position pos = position(userId, data, today, settles);
 
         Map<String, Object> daily = dailyBudget.assess(data, amount, today);
 

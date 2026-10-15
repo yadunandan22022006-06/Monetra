@@ -32,14 +32,13 @@ Monetra does not just tell you how much you are spending. Before you pay, one an
 The **HE** button opens home expenses, kept apart from Pay.
 
 - Three payment options, each with its own form: **Daily**, **Monthly** and **Yearly HE Payment**. The form only shows the fields the chosen payment method needs.
-- Five payment methods. The server (`GET /api/he/methods`) tells the page what each one really does:
+- Four payment methods. The server (`GET /api/he/methods`) tells the page what each one really does:
 
 | Method | What happens |
 |---|---|
 | **Scan & Pay** | Scan a Monetra or UPI QR code with the camera, or choose its picture. The name is shown, you enter the amount, and you approve on PayPal. |
 | **My Payment QR** | Your own Monetra QR code, for other people to scan and pay you. |
 | **Mobile number** | Type a number (with or without +91) or pick a contact. The number is checked and the name is shown (the registered name on Monetra, or your own contact's name). You approve on PayPal. As on the Pay screen, a number that is not on Monetra can still be paid through PayPal. |
-| **Bank transfer** | PayPal cannot send money to a bank account, so Monetra does **not** start a bank transfer. You make it in your bank's app (NEFT, IMPS, RTGS or UPI) and record it here. Only the last 4 digits of an account are kept. |
 | **Cash** | Recorded only after you confirm you really paid. No money is moved. |
 
 - Scan & Pay and Mobile number reuse the same PayPal Sandbox payment as Send Money, with the same Guardian and Fraud Guard checks first. They are shown as **Successful** only when PayPal confirms them; otherwise **Pending**, **Failed** or **Cancelled**. Pressing Pay Now twice makes one payment.
@@ -54,7 +53,7 @@ The **Monetra Guardian** button (top left) opens one place with two sections tha
 |---|---|---|
 | **AI & Payments** | **AI Financial Guardian** | A chat agent that calls tools on the Java backend (`check_budget`, `get_upcoming_expenses`, `check_affordability`, `prepare_payment`, `get_home_contributions`, `prepare_reminder`). It answers from your real records and can **prepare** a payment or a reminder, but only you can confirm. |
 | **AI & Payments** | **PayPal Payment System** | PayPal Orders (send), **PayPal Payouts** (the receiver gets the money in their PayPal account), **verified webhooks**, a payments table with status and payout status, and a "Check with PayPal" recovery button. |
-| **Family & Home** | **Home Expense Guardian** | Recurring household expenses (rent, bills, money for home) that are daily, weekly, monthly, yearly or one time. Upcoming, due today, overdue and paid tracking, reminders, a daily summary and a monthly report. Payments you mark yourself are labelled "not verified"; payments made through Monetra are marked paid when PayPal confirms them. |
+| **Family & Home** | **Home Expense Guardian** | Recurring household expenses (rent, bills, money for home) that are daily, weekly, monthly, yearly or one time. Upcoming, due today, overdue and paid tracking, reminders, a daily summary and a monthly report. Payments you mark yourself are labelled "not verified"; **Pay with Monetra** opens HE with the bill filled in: paid through PayPal, it is marked paid when PayPal confirms it; recorded as cash, it is marked paid as your own word. The bill being paid is not counted twice in the Guardian check. |
 
 **Send Money** and **HE** have one box for **a name or a mobile number**. As you type, matching contacts appear under it with their name and number, like a phone's dialler: people you saved, people you paid or were paid by, and **your own phone contacts**. Tap *Add contacts from your phone* in the list: on Android Chrome it opens the phone's contact list, on other browsers you choose the contacts file (`.vcf`) exported from your phone or Google Contacts. (You cannot search all Monetra users, by design. Phone contacts are stored only for you and *Remove* deletes them.)
 
@@ -192,7 +191,7 @@ Browser (HTML, CSS, JavaScript)  ->  Spring Boot 4 (Java 21)  ->  PayPal Sandbox
 ./mvnw test
 ```
 
-The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports), contacts privacy, and the **Financial Guardian** (daily limit, loan repayment, next-month forecast and savings-goal sums; one payment checked against all three; notifications sent once; the HE payment methods, with cash and bank transfers recorded only on confirmation and PayPal ones verified; refused bad figures; and one user never seeing another's loans, goals or forecasts), **Safe to Spend Today**, the **Smart Buy Planner** (worked-out dates and amounts), **Scam Shield** (risk levels, no message kept without consent) and review boxes that never say the same thing twice.
+The automated tests cover the budget, fraud and schedule rules, QR and IFSC parsing, login and per-user data isolation, the **whole payment journey against a fake PayPal server** (create, capture, history for both people, notifications, payout to the receiver's PayPal email, verified and rejected webhooks, no double processing), the **AI agent against fake Claude and fake free-provider servers** (tool calls, prepared-only payments and reminders, errors), household expenses (schedules, paid and overdue, reminders, reports), contacts privacy, and the **Financial Guardian** (daily limit, loan repayment, next-month forecast and savings-goal sums; one payment checked against all three; notifications sent once; the HE payment methods, with cash recorded only on confirmation and PayPal ones verified; refused bad figures; and one user never seeing another's loans, goals or forecasts), **Safe to Spend Today**, the **Smart Buy Planner** (worked-out dates and amounts), **Scam Shield** (risk levels, no message kept without consent) and review boxes that never say the same thing twice.
 
 ## API collection
 
@@ -225,7 +224,8 @@ Import `postman/monetra.postman_collection.json` into **Postman**. Log in first;
 - **Sandbox only.** Test money. Going live needs a live PayPal merchant account and review.
 - **Check Balance uses Setu's sandbox:** its accounts and balances are Setu's test data, not a real bank. Reading real bank accounts through the Account Aggregator network needs Setu's production approval, and FIUs must be regulated entities (RBI, SEBI, IRDAI or PFRDA).
 - Payouts need **Payouts enabled** on your PayPal app and a **balance** in the Sandbox business account. If a payout fails, the payment stays confirmed and the receiver sees the payout status, with a retry button.
-- A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Bank transfer and Cash are records of what you paid yourself; a real bank transfer would need a different payment provider.- Account balances and spending are **entered by you**, not read from a bank.
+- A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Cash is a record of what you paid yourself. HE has no bank transfer option: PayPal cannot pay a bank account.
+- Account balances and spending are **entered by you**, not read from a bank.
 - The per-payment lock is in-process, so run a single server instance.
 - Live QR camera scanning needs a browser with `BarcodeDetector` (Chrome, Edge, Android). On any browser you can upload a QR image instead.
 
