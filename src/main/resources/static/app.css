@@ -1390,6 +1390,20 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
 .he-reminder input[type="time"], .he-reminder input[type="date"], .he-reminder input[type="number"] { padding: 9px 10px; }
 
+/* the time: hour, minutes and AM / PM side by side, always in the last column */
+
+.he-reminder { grid-template-columns: 1.2fr 1fr 1.5fr; }
+
+.he-reminder .time-cell { grid-column: -2; }
+
+.he-reminder > div { min-width: 0; }
+
+.he-reminder input[type="date"] { width: 100%; min-width: 0; }
+
+.time-pick { display: flex; gap: 4px; }
+
+.tab-panel form.card .time-pick select { flex: 1 1 0; min-width: 0; padding: 9px 2px 9px 8px; font-size: 14px; }
+
 @media (max-width: 460px) {
     .he-reminder { grid-template-columns: 1fr 1fr; }
     .he-reminder .check-row { grid-column: 1 / -1; margin-bottom: 0; }
@@ -1805,27 +1819,137 @@ textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(242, 196,
    CHECK BALANCE: the account, its balance, when it was checked
    ========================================================== */
 
-.bank-row { display: grid; gap: 4px; }
+/* three rows, each with a gold icon, set in the middle of the screen; the buttons below */
 
-.bank-label { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.4px; }
+#bankCard.bank-card {
+    width: 100%;
+    max-width: 660px;
+    margin: 0 auto;
+    padding: 0;
+    gap: 14px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    justify-content: center !important;
+}
 
-.bank-row strong { color: var(--text); font-size: 17px; overflow-wrap: anywhere; }
+.bank-boxes { display: flex; flex-direction: column; gap: 14px; }
 
-.bank-row select { max-width: 520px; }
+.bank-box {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-height: clamp(110px, 17vh, 140px);
+    padding: 16px 20px;
+    border-radius: 18px;
+    background: rgba(13, 20, 80, 0.72);
+    border: 1px solid rgba(242, 196, 92, 0.28);
+}
 
-.bank-main .bank-balance { color: var(--gold); font-size: 40px; font-weight: 800; line-height: 1.1; }
+.bank-icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    border-radius: 15px;
+    background: var(--gold);
+    color: var(--ink);
+}
+
+.bank-icon svg.i { width: 30px; height: 30px; stroke-width: 1.7; }
+
+.bank-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; }
+
+.bank-text.bank-inline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+
+.bank-box .bank-label { font-family: var(--sans); color: var(--text); font-size: 19px; font-weight: 700; letter-spacing: 0.1px; }
+
+.bank-box strong { color: var(--muted); font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+
+.bank-box select { max-width: 100%; }
+
+.bank-main .bank-balance { color: var(--gold); font-size: 30px; font-weight: 800; line-height: 1.15; }
 
 .bank-main .bank-balance.stale { color: var(--muted); }
+
+.bank-hint { color: var(--text); font-size: 14px; font-weight: 600; }
+
+.bank-chev { color: var(--muted); width: 22px; height: 22px; }
+
+.bank-art {
+    flex: 0 0 auto;
+    width: 92px;
+    height: 68px;
+    fill: none;
+    stroke: var(--text);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* the "link one" pictures and lines show only while no bank account is linked */
+
+.bank-card:not(:has(#bankLinkFirst:not(.hidden))) .bank-hint,
+.bank-card:not(:has(#bankLinkFirst:not(.hidden))) .bank-art { display: none; }
+
+#bankMessage { margin-top: 0; }
 
 #bankMessage:empty { display: none; }
 
 #bankMessage.warn { color: var(--amber); }
 
-.bank-card .button-row { margin-top: 4px; }
+.bank-card .bank-actions { margin-top: 4px; gap: 14px; }
 
-.bank-manage { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.bank-actions button { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px 12px; font-size: 17px; border-radius: 16px; white-space: nowrap; }
 
-.bank-manage .link-button { padding: 4px 0; }
+#bankBack, #bankLinkFirst, #bankRefresh { position: relative; }
+
+#bankBack::before, #bankLinkFirst::before, #bankRefresh::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
+}
+
+#bankBack { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14L4 9l5-5'/%3E%3Cpath d='M4 9h10.5a5.5 5.5 0 0 1 0 11H11'/%3E%3C/svg%3E"); }
+
+#bankLinkFirst { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E"); }
+
+#bankRefresh { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4'/%3E%3C/svg%3E"); }
+
+.bank-manage { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; }
+
+.bank-manage:not(:has(button:not(.hidden))) { display: none; }
+
+.bank-manage .link-button { width: auto; margin-top: 0; padding: 2px 0; }
+
+@media (max-height: 760px), (max-width: 640px) {
+    .bank-card, .bank-boxes { gap: 10px; }
+
+    .bank-box { min-height: clamp(96px, 17vh, 140px); gap: 14px; padding: 12px 14px; }
+
+    .bank-icon { width: 48px; height: 48px; border-radius: 13px; }
+
+    .bank-icon svg.i { width: 25px; height: 25px; }
+
+    .bank-box .bank-label { font-size: 17px; }
+
+    .bank-main .bank-balance { font-size: 26px; }
+
+    .bank-hint { font-size: 13px; }
+
+    .bank-art { width: 70px; height: 52px; }
+
+    .bank-actions button { padding: 13px 8px; font-size: 15px; }
+}
+
+@media (max-width: 420px) {
+    .bank-art { display: none; }
+}
 
 /* ==========================================================
    LETTERING: Poppins for everything, and the same elegant serif
@@ -1873,4 +1997,374 @@ textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(242, 196,
     .subtabs button { padding: 6px 12px; }
 
     .tab-panel .card { padding-top: 10px; padding-bottom: 10px; }
+}
+
+
+/* ==========================================================
+   THE MONETRA LOOK (from the user's dashboard picture, 2026-10-15):
+   glass cards on a deep navy night with soft teal and gold light,
+   white bold titles, green for money that is safe to use, gold for
+   actions. Last in the file, so it wins over the older look.
+   ========================================================== */
+
+:root {
+    --glass: rgba(22, 30, 72, 0.55);
+    --glass-line: rgba(255, 255, 255, 0.14);
+    --money: #3fe0a0;
+}
+
+body {
+    background:
+        radial-gradient(3px 3px at 14% 22%, rgba(242, 196, 92, 0.9), transparent 70%),
+        radial-gradient(4px 4px at 83% 17%, rgba(242, 196, 92, 0.75), transparent 70%),
+        radial-gradient(3px 3px at 93% 63%, rgba(242, 196, 92, 0.8), transparent 70%),
+        radial-gradient(5px 5px at 8% 74%, rgba(242, 196, 92, 0.6), transparent 70%),
+        radial-gradient(3px 3px at 57% 91%, rgba(242, 196, 92, 0.6), transparent 70%),
+        radial-gradient(70px 70px at 79% 40%, rgba(242, 196, 92, 0.16), transparent 70%),
+        radial-gradient(80px 80px at 18% 46%, rgba(242, 196, 92, 0.10), transparent 70%),
+        radial-gradient(560px 400px at 72% 6%, rgba(32, 168, 160, 0.20), transparent 65%),
+        radial-gradient(600px 440px at 6% 88%, rgba(32, 150, 150, 0.18), transparent 65%),
+        radial-gradient(460px 340px at 98% 94%, rgba(242, 196, 92, 0.08), transparent 65%),
+        linear-gradient(180deg, #08102e 0%, #060c26 55%, #050a20 100%);
+    background-attachment: fixed;
+}
+
+/* glass cards */
+
+.card, .aware-card, .tile {
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    border-radius: 20px;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.aware-card:hover, .tile:hover { border-color: var(--gold-line); background: rgba(30, 40, 90, 0.62); transform: none; }
+
+/* white, bold titles in the app's sans-serif letters */
+
+.page-head h1 {
+    font-family: var(--sans);
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+    font-size: clamp(22px, 4.6vw, 30px);
+}
+
+.card h2, .aware-title, .tile strong, .sub-title {
+    font-family: var(--sans);
+    color: var(--text);
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.card h2 { font-size: 18px; }
+
+/* the top bar: one glass strip with the gold shield */
+
+.topbar {
+    margin: 10px auto 0;
+    width: min(896px, calc(100% - 24px));
+    padding: 10px 16px;
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    border-radius: 20px;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+}
+
+.topbar .logo-circle { width: 42px; height: 42px; border: 0; border-radius: 0; color: var(--gold); }
+
+.topbar .logo-circle svg.i { width: 38px; height: 38px; stroke-width: 1.7; }
+
+.brand-small .wordmark { font-family: var(--sans); font-weight: 700; color: var(--text); letter-spacing: -0.4px; font-size: 26px; }
+
+#dashboardUser { display: none; }
+
+/* tabs: one dark pill with the chosen part in gold */
+
+.subtabs, .seg {
+    padding: 4px;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--glass-line);
+    border-radius: 999px;
+}
+
+.subtabs button, .seg button { border: 0; color: var(--muted); background: transparent; box-shadow: none; }
+
+.seg button:not(.active) { border-color: transparent; }
+
+.subtabs button:not(.active):hover, .seg button:not(.active):hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+.subtabs button.active, .seg button.active {
+    background: linear-gradient(180deg, #f6cd6c, #eab846);
+    color: var(--ink);
+    box-shadow: 0 6px 16px rgba(242, 196, 92, 0.22);
+}
+
+/* the menu at the bottom */
+
+.bottom-nav { background: rgba(18, 26, 62, 0.72); border: 1px solid rgba(242, 196, 92, 0.42); }
+
+.bottom-nav button { color: var(--text); }
+
+@media (min-width: 641px) {
+    .bottom-nav { height: 60px; }
+
+    .bottom-nav button { flex-direction: row; gap: 8px; font-size: 15px; }
+}
+
+/* ---------- Home ---------- */
+
+.home-hero { display: grid; gap: 14px; margin-top: 10px; padding: 18px 22px; }
+
+.home-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; }
+
+.home-hero .safe-spend { width: auto; padding: 0; gap: 2px; }
+
+.home-hero .safe-spend:hover { background: transparent; }
+
+.home-hero .safe-label { font-family: var(--sans); color: var(--money); font-size: 13px; font-weight: 700; letter-spacing: 1.2px; }
+
+.safe-amount { color: var(--money); }
+
+.home-hero .safe-amount { font-size: clamp(36px, 6.4vw, 58px); letter-spacing: -0.5px; }
+
+.home-hero .subtabs { flex: 0 1 380px; margin: 4px 0 0; }
+
+.hero-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.hero-stat { display: flex; align-items: center; justify-content: center; gap: 12px; }
+
+.hero-stat > svg.i { width: 34px; height: 34px; color: var(--gold); fill: rgba(242, 196, 92, 0.16); }
+
+.hero-stat-label { display: block; color: var(--gold); font-size: 13px; font-weight: 500; }
+
+.hero-stat strong { display: block; color: var(--text); font-size: 22px; font-weight: 700; }
+
+.home-hero .safe-text { font-size: 13px; color: var(--muted); }
+
+.home-hero .safe-text:empty { display: none; }
+
+.hero-actions { margin-top: 12px; }
+
+.big-action {
+    justify-content: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border: 1px solid var(--gold-line);
+    border-radius: 18px;
+    background: rgba(10, 16, 48, 0.4);
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.big-action .dot { width: 46px; height: 46px; background: transparent; border: 2px solid var(--gold); color: var(--gold); }
+
+.big-action .chev { display: none; }
+
+.big-action.primary {
+    justify-content: flex-start;
+    padding-left: 22px;
+    background: linear-gradient(180deg, #f6cd6c, #e3ae40);
+    border-color: transparent;
+    color: var(--ink);
+    box-shadow: 0 10px 26px rgba(242, 196, 92, 0.25);
+}
+
+.big-action.primary .dot { background: var(--ink); border: 0; color: var(--gold); }
+
+.big-action.primary:hover { background: linear-gradient(180deg, #ffd777, #f0c04e); color: var(--ink); }
+
+.aware-card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px;
+}
+
+.aware-icon { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; color: var(--gold); }
+
+.aware-icon svg.i { width: 34px; height: 34px; }
+
+.aware-body { display: grid; gap: 3px; min-width: 0; }
+
+.aware-title { font-size: 17px; }
+
+.aware-main { font-size: 22px; font-weight: 800; color: var(--text); line-height: 1.2; }
+
+.aware-main.good { color: var(--money); }
+
+.aware-main.bad, .aware-sub.bad { color: var(--red); }
+
+.aware-main.gold { color: var(--gold); }
+
+.aware-card .risk-chip { position: absolute; top: 12px; right: 12px; }
+
+.aware-card .risk-chip.low, .aware-card .risk-chip.unknown { display: none; }
+
+.ring {
+    position: relative;
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.ring::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(var(--money) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.14) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+}
+
+.ring.over::before { background: var(--red); }
+
+.ring b { position: relative; }
+
+.tile { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }
+
+.tile-head { display: flex; align-items: flex-start; gap: 14px; }
+
+.tile .tile-icon { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; background: transparent; color: var(--gold); }
+
+.tile .tile-icon svg.i { width: 34px; height: 34px; }
+
+.tile .tile-icon.ok { color: var(--money); }
+
+.tile .tile-icon.warn { color: var(--amber); }
+
+.tile-text { display: grid; gap: 3px; }
+
+.tile strong { font-size: 18px; }
+
+.tile-status { font-size: 18px; font-weight: 700; color: var(--muted); }
+
+.tile-status:empty { display: none; }
+
+.tile-status.good { color: var(--money); }
+
+.tile-status.warn { color: var(--amber); }
+
+.tile-status.bad { color: var(--red); }
+
+.spark { width: 100%; flex: 1 1 auto; min-height: 36px; max-height: 96px; }
+
+.spark-line { fill: none; stroke: var(--gold); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+
+.spark-area { fill: rgba(242, 196, 92, 0.10); stroke: none; }
+
+/* a card head that only holds a button keeps the button on the right */
+
+.card-head:not(:has(h2)) { justify-content: flex-end; }
+
+/* phones and short windows: the same look, a little smaller */
+
+@media (max-width: 640px), (max-height: 760px) {
+    .topbar { margin-top: 6px; padding: 6px 12px; }
+
+    .topbar .logo-circle { width: 36px; height: 36px; }
+
+    .topbar .logo-circle svg.i { width: 32px; height: 32px; }
+
+    .home-hero { gap: 8px; margin-top: 8px; padding: 12px 16px; }
+
+    .home-hero .safe-amount { font-size: clamp(32px, 9vw, 44px); }
+
+    .hero-stat > svg.i { width: 28px; height: 28px; }
+
+    .hero-stat strong { font-size: 18px; }
+
+    .hero-actions { margin-top: 10px; }
+
+    .big-action { padding: 10px 16px; }
+
+    .big-action .dot { width: 40px; height: 40px; }
+
+    .aware-card { padding: 10px 14px; gap: 12px; align-items: center; }
+
+    .aware-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+
+    .aware-title { flex-basis: 100%; font-size: 15px; }
+
+    .aware-main { font-size: 18px; }
+
+    .ring { width: 40px; height: 40px; font-size: 11px; }
+
+    .aware-icon { width: 36px; height: 36px; }
+
+    .aware-icon svg.i, .tile .tile-icon svg.i { width: 28px; height: 28px; }
+
+    .tile { padding: 12px 14px; gap: 8px; }
+
+    .tile strong { font-size: 15px; }
+
+    .tile-status { font-size: 15px; }
+
+    .spark { max-height: 60px; }
+}
+
+@media (max-width: 640px) {
+    .home-hero .subtabs { flex-basis: 100%; }
+
+    .home-hero .subtabs button { padding-top: 6px; padding-bottom: 6px; }
+
+    .hero-actions .big-action, .hero-actions .big-action.primary {
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 8px;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+
+    .hero-actions .big-action .dot { width: 30px; height: 30px; }
+
+    .hero-actions .big-action .dot svg.i { width: 18px; height: 18px; }
+
+    .aware-grid { gap: 8px; }
+
+    .aware-card { padding: 8px 12px; }
+
+    .ring { width: 36px; height: 36px; font-size: 10px; }
+
+    .tile-grid { gap: 8px; margin-top: 8px; }
+
+    .tile { padding: 10px 12px; gap: 4px; }
+
+    .tile-head { gap: 10px; }
+
+    .spark { max-height: 34px; min-height: 24px; }
+}
+
+@media (min-width: 641px) and (max-height: 760px) {
+    .bottom-nav { height: 52px; margin-top: 6px; margin-bottom: 8px; }
+}
+
+/* a narrow phone: the top bar's buttons a little tighter, so none of them touch */
+
+@media (max-width: 400px) {
+    .topbar { width: calc(100% - 16px); padding: 6px 8px; }
+
+    .brand-small, .topbar-right { gap: 6px; }
+
+    .topbar .logo-circle { width: 30px; height: 30px; }
+
+    .topbar .logo-circle svg.i { width: 28px; height: 28px; }
+
+    .guardian-btn { padding: 7px 10px; }
+
+    .icon-button { width: 34px; height: 34px; }
+
+    .logout-button { padding: 7px 10px; font-size: 12px; }
 }

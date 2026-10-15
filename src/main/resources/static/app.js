@@ -3150,6 +3150,7 @@ function editLoan(loan) {
     editingLoan = loan.id;
 
     $('loanFormTitle').textContent = 'Edit Loan';
+    $('loanFormTitle').classList.remove('hidden');
     $('loanSubmit').textContent = 'Save Changes';
     $('loanCancel').classList.remove('hidden');
 
@@ -3175,6 +3176,7 @@ function stopLoanEdit() {
     $('loanForm').reset();
 
     $('loanFormTitle').textContent = 'Add Loan / EMI';
+    $('loanFormTitle').classList.add('hidden');
     $('loanSubmit').textContent = 'Add Loan';
     $('loanCancel').classList.add('hidden');
 }
@@ -3590,6 +3592,7 @@ function editGoal(goal) {
     editingGoal = goal.id;
 
     $('goalFormTitle').textContent = 'Edit Goal';
+    $('goalFormTitle').classList.remove('hidden');
     $('goalSubmit').textContent = 'Save Changes';
     $('goalCancel').classList.remove('hidden');
 
@@ -3614,6 +3617,7 @@ function stopGoalEdit() {
     $('goalSaved').value = '0';
 
     $('goalFormTitle').textContent = 'Create a Goal';
+    $('goalFormTitle').classList.add('hidden');
     $('goalSubmit').textContent = 'Add Goal';
     $('goalCancel').classList.add('hidden');
 }
@@ -3797,69 +3801,76 @@ function setChip(id, text, level) {
 function renderAwareness() {
     const o = overview || {};
 
-    /* Card 1: daily budget. */
+    /* Card 1: daily budget. The ring shows how much of today's limit is used. */
 
     const daily = o.daily;
+    const ring = $('awareDailyRing');
 
     if (daily && daily.limitSet) {
         setChip('awareDailyChip', daily.statusLabel, daily.status);
 
-        $('awareDailyMain').textContent = Number(daily.overBy) > 0
-            ? money(daily.overBy) + ' over today\'s limit of ' + money(daily.limit)
-            : money(daily.remaining) + ' left of ' + money(daily.limit) + ' today';
+        const over = Number(daily.overBy) > 0;
+        const used = Math.max(0, Number(daily.percentUsed) || 0);
 
-        $('awareDailySub').textContent = 'Spent ' + money(daily.spentToday) + ' • ' + daily.percentUsed + '% used';
+        $('awareDailyMain').textContent = over ? money(daily.overBy) + ' over' : money(daily.remaining) + ' left';
+        $('awareDailyMain').className = 'aware-main ' + (over ? 'bad' : 'good');
+
+        ring.style.setProperty('--p', Math.min(100, used));
+        ring.classList.toggle('over', over);
+        ring.firstElementChild.textContent = Math.round(used) + '%';
 
     } else {
         setChip('awareDailyChip', 'No limit set', 'UNKNOWN');
 
-        $('awareDailyMain').textContent = 'Set a daily limit.';
-        $('awareDailySub').textContent = daily ? 'Spent today ' + money(daily.spentToday) : '';
+        $('awareDailyMain').textContent = 'Set a limit';
+        $('awareDailyMain').className = 'aware-main';
+
+        ring.style.setProperty('--p', 0);
+        ring.classList.remove('over');
+        ring.firstElementChild.textContent = '—';
     }
 
-    /* Card 2: loans. */
+    $('awareDailySub').textContent = '';
+
+    /* Card 2: loans: the next EMI and when it is due. */
 
     const loans = o.loans;
+    const next = loans && loans.count ? loans.next : null;
 
     if (loans && loans.count) {
         setChip('awareLoansChip', loans.statusLabel, loans.status);
 
-        $('awareLoansMain').textContent = loans.next
-            ? 'Next EMI ' + money(loans.next.amount) + (loans.next.overdue ? ' is overdue' : ' on ' + displayDate(loans.next.date))
-            : 'No EMI due in the next 60 days';
-
-        $('awareLoansSub').textContent = 'EMIs this month ' + money(loans.emiThisMonth) +
-            ' • Outstanding ' + money(loans.totalOutstanding);
+        $('awareLoansMain').textContent = next ? money(next.amount) + ' EMI' : 'No EMI due';
 
     } else {
         setChip('awareLoansChip', 'No loans', 'UNKNOWN');
 
-        $('awareLoansMain').textContent = 'Add a loan to track EMIs.';
-        $('awareLoansSub').textContent = '';
+        $('awareLoansMain').textContent = 'Add a loan';
     }
+
+    $('awareLoansSub').textContent = !next ? '' : next.overdue ? 'Overdue' : 'Due ' + displayDate(next.date);
+    $('awareLoansSub').className = 'aware-sub' + (next && next.overdue ? ' bad' : '');
 
     /* Card 3: the active savings goal. */
 
     const goal = o.activeGoal;
 
     if (goal) {
-        setChip('awareGoalsChip', goal.percent + '%', goal.status === 'BEHIND' ? 'HIGH' : 'LOW');
+        const behind = goal.status === 'BEHIND';
 
-        $('awareGoalsMain').textContent = goal.name + ': ' + money(goal.saved) + ' of ' + money(goal.target);
+        setChip('awareGoalsChip', behind ? 'Behind' : goal.percent + '%', behind ? 'HIGH' : 'LOW');
 
-        $('awareGoalsSub').textContent = money(goal.remaining) + ' to go' +
-            (goal.status === 'BEHIND' ? ' • ' + money(goal.shortfall) + ' behind plan'
-                : (goal.estimatedCompletion
-                    ? ' • on course for ' + new Date(goal.estimatedCompletion + 'T00:00:00')
-                        .toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-                    : ''));
+        $('awareGoalsMain').textContent = goal.percent + '%';
+        $('awareGoalsMain').className = 'aware-main gold';
+        $('awareGoalsSub').textContent = goal.name;
 
     } else {
         const any = safeArray(o.goals).length > 0;
 
         setChip('awareGoalsChip', any ? 'Reached' : 'No goal', any ? 'LOW' : 'UNKNOWN');
 
-        $('awareGoalsMain').textContent = any ? 'All your goals are reached 🎉' : 'Create a goal and track it.';
+        $('awareGoalsMain').textContent = any ? 'All reached 🎉' : 'Add a goal';
+        $('awareGoalsMain').className = 'aware-main';
         $('awareGoalsSub').textContent = '';
     }
 
@@ -3943,16 +3954,58 @@ $('moneyForm').addEventListener('submit', function(event) {
    HOME TILES AND REDRAW
 ================================ */
 
+const FORECAST_STATUS = {
+    ok: ['On track', 'good'],
+    watch: ['Close to limit', 'warn'],
+    over: ['Over limit pace', 'bad'],
+    unknown: ['No monthly limit', '']
+};
+
 function updateTiles() {
-    $('tileForecast').textContent = forecast
-        ? forecastText(forecast).split('. ')[0].replace(/\.$/, '') + '.'
-        : "This month's pace.";
+    const status = forecast && FORECAST_STATUS[forecast.status];
+
+    $('tileForecast').textContent = status ? status[0] : '';
+    $('tileForecast').className = 'tile-status ' + (status ? status[1] : '');
+
+    renderSpark();
 
     const flagged = payments.filter(p => p.direction === 'SENT' && p.riskFlags).length;
 
-    $('tileFraud').textContent = flagged
-        ? flagged + ' payment' + (flagged > 1 ? 's' : '') + ' needed your confirmation'
-        : 'Every payment checked.';
+    $('tileFraud').textContent = flagged ? flagged + ' flagged' : 'Secure';
+    $('tileFraud').className = 'tile-status ' + (flagged ? 'warn' : 'good');
+    $('tileFraudIcon').className = 'tile-icon ' + (flagged ? 'warn' : 'ok');
+}
+
+/* Spending Forecast tile: what was spent each day over the last 14 days, as one line. */
+
+function renderSpark() {
+    const totals = [];
+
+    for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+
+        d.setDate(d.getDate() - i);
+
+        const key = dateKey(d);
+
+        totals.push(spentBetween(key, key));
+    }
+
+    const max = Math.max(1, ...totals);
+    const points = totals.map((t, i) => (i * 300 / 13).toFixed(1) + ',' + (62 - t / max * 50).toFixed(1));
+    const ns = 'http://www.w3.org/2000/svg';
+
+    const area = document.createElementNS(ns, 'polygon');
+
+    area.setAttribute('points', '0,70 ' + points.join(' ') + ' 300,70');
+    area.setAttribute('class', 'spark-area');
+
+    const line = document.createElementNS(ns, 'polyline');
+
+    line.setAttribute('points', points.join(' '));
+    line.setAttribute('class', 'spark-line');
+
+    $('tileSpark').replaceChildren(area, line);
 }
 
 function renderWeekBars() {
@@ -4766,6 +4819,7 @@ function renderHeForm() {
     });
 
     $('heFormTitle').textContent = heBill ? heBill.name : HE_TYPES[heType] + ' HE Payment';
+    $('heFormTitle').parentElement.classList.toggle('hidden', !heBill);
 
     document.querySelectorAll('#heMethods button').forEach(button => {
         const info = heMethodInfo[button.dataset.method];
@@ -5019,6 +5073,62 @@ function applyHeScan(payeeInfo) {
 
 /* ---------- reminders ---------- */
 
+/* Reminder times: picked as hour, minutes and AM or PM; kept as 24-hour "HH:MM", as the server reads them. */
+
+function twoDigits(n) {
+    return String(n).padStart(2, '0');
+}
+
+function timeFromPick(box) {
+    const hour = Number(box.querySelector('.t-hour').value) % 12;
+    const pm = box.querySelector('.t-ampm').value === 'PM';
+
+    return twoDigits(hour + (pm ? 12 : 0)) + ':' + box.querySelector('.t-min').value;
+}
+
+function setTimePick(id, value) {
+    const hidden = $(id);
+    const box = hidden.parentElement;
+    const parts = String(value || '09:00').split(':').map(Number);
+    const hour = Number.isInteger(parts[0]) && parts[0] >= 0 && parts[0] < 24 ? parts[0] : 9;
+    const minute = Number.isInteger(parts[1]) && parts[1] >= 0 && parts[1] < 60 ? parts[1] : 0;
+    box.querySelector('.t-hour').value = String(hour % 12 || 12);
+    box.querySelector('.t-min').value = twoDigits(minute);
+    box.querySelector('.t-ampm').value = hour < 12 ? 'AM' : 'PM';
+
+    hidden.value = twoDigits(hour) + ':' + twoDigits(minute);
+}
+
+function buildTimePick(id) {
+    const hidden = $(id);
+    const box = hidden.parentElement;
+
+    const add = (cls, label, values) => {
+        const select = document.createElement('select');
+
+        select.className = cls;
+        select.setAttribute('aria-label', label);
+
+        values.forEach(v => select.appendChild(new Option(v, v)));
+
+        select.addEventListener('change', () => {
+            hidden.value = timeFromPick(box);
+        });
+
+        box.appendChild(select);
+
+        return select;
+    };
+
+    add('t-hour', 'Hour', ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']).id = id + 'H';
+    add('t-min', 'Minutes', Array.from({ length: 60 }, (_, i) => twoDigits(i)));
+    add('t-ampm', 'AM or PM', ['AM', 'PM']);
+
+    setTimePick(id, hidden.value);
+}
+
+['heRemDailyTime', 'heRemMonthlyTime', 'heRemYearlyTime'].forEach(buildTimePick);
+
 function renderHeReminders() {
     const r = records.he.reminders || {};
 
@@ -5027,15 +5137,15 @@ function renderHeReminders() {
     const yearly = r.yearly || {};
 
     $('heRemDailyOn').checked = !!daily.on;
-    $('heRemDailyTime').value = daily.time || '09:00';
+    setTimePick('heRemDailyTime', daily.time || '09:00');
 
     $('heRemMonthlyOn').checked = !!monthly.on;
     $('heRemMonthlyDay').value = monthly.day || 1;
-    $('heRemMonthlyTime').value = monthly.time || '09:00';
+    setTimePick('heRemMonthlyTime', monthly.time || '09:00');
 
     $('heRemYearlyOn').checked = !!yearly.on;
     $('heRemYearlyDate').value = yearly.date || '';
-    $('heRemYearlyTime').value = yearly.time || '09:00';
+    setTimePick('heRemYearlyTime', yearly.time || '09:00');
 }
 
 function renderHe() {
@@ -5480,24 +5590,21 @@ function renderSafeToSpend() {
         amount.textContent = '—';
         amount.className = 'safe-amount unknown';
 
+        $('safeBalance').textContent = '—';
+        $('safeProtected').textContent = '—';
         $('safeText').textContent = s && s.text ? s.text : 'Add your balance and income day in Spending, under My money.';
-        $('safeSub').textContent = '';
         return;
     }
 
     amount.textContent = money(s.amount);
     amount.className = 'safe-amount ' + (RISK_CLASS[s.status] || 'low');
 
-    /* The amount is shown once, in big. The lines under it say what is protected, and until when. */
+    $('safeBalance').textContent = money(s.balance);
+    $('safeProtected').textContent = money(s.protected);
 
-    const over = s.status === 'HIGH';
+    /* Only a warning is written out; otherwise the three figures say it all. */
 
-    $('safeText').textContent = over
-        ? s.text
-        : 'EMIs, bills, essentials and savings kept aside ' + s.until + '.';
-
-    $('safeSub').textContent = 'Balance ' + money(s.balance) + ' • Protected ' + money(s.protected) +
-        (!over && Number(s.spentToday) > 0 ? ' • Spent today ' + money(s.spentToday) : '');
+    $('safeText').textContent = s.status === 'HIGH' ? s.text : '';
 }
 
 /* ==============================
@@ -6087,7 +6194,9 @@ function renderBankAccounts() {
 
     $('bankAccountName').textContent = chosen ? bankAccountLabel(chosen) : 'No bank account linked';
 
-    $('bankLink').textContent = bankAccounts.length ? 'Link another account' : 'Link Bank Account';
+    $('bankRefresh').classList.toggle('hidden', !bankAccounts.length);
+    $('bankLinkFirst').classList.toggle('hidden', !!bankAccounts.length);
+    $('bankLink').classList.toggle('hidden', !bankAccounts.length);
     $('bankPrimary').classList.toggle('hidden', !chosen || chosen.primary || !many);
     $('bankRemove').classList.toggle('hidden', !chosen);
     $('bankRefresh').disabled = bankBusy || !chosen;
@@ -6210,9 +6319,7 @@ async function loadBank() {
         }
 
         if (!bankAccounts.length) {
-            setBankMessage(status.pendingConsents
-                ? 'Consent not approved yet. Finish on Setu, or link again.'
-                : 'No bank account linked yet.');
+            setBankMessage(status.pendingConsents ? 'Consent not approved yet. Finish on Setu, or link again.' : '');
             return;
         }
 
@@ -6225,7 +6332,7 @@ async function loadBank() {
 
 /* Linking: Setu's own screens ask the user to pick their bank, verify with an OTP and approve. */
 
-$('bankLink').addEventListener('click', async function() {
+async function startBankLink() {
     const button = this;
 
     button.disabled = true;
@@ -6240,7 +6347,10 @@ $('bankLink').addEventListener('click', async function() {
         setBankMessage(error.message, true);
         button.disabled = false;
     }
-});
+}
+
+$('bankLink').addEventListener('click', startBankLink);
+$('bankLinkFirst').addEventListener('click', startBankLink);
 
 /* Sends the browser to Setu's consent screens, and nowhere else. */
 

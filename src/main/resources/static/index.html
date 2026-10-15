@@ -39,7 +39,12 @@
         <symbol id="i-family" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5.2a3.2 3.2 0 0 1 0 5.8M18.5 14.4c2 .7 3 2.5 3 5.6"/></symbol>
         <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
         <symbol id="i-robot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16.5h5"/></symbol>
+        <symbol id="i-upright" viewBox="0 0 24 24"><path d="M7 17L17 7M8.5 7H17v8.5"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></symbol>
         <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></symbol>
+        <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 7.5h7M8.5 10.5h7M9 7.5c3.6 0 3.6 6 0 6l5 4"/></symbol>
+        <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+        <symbol id="i-cardplus" viewBox="0 0 64 48"><rect x="2" y="12" width="50" height="33" rx="5"/><rect x="8" y="19" width="11" height="8" rx="2"/><path d="M8 37h5M17 37h5M26 37h5M35 37h5M54 2v12M48 8h12"/></symbol>
     </defs>
 </svg>
 
@@ -144,7 +149,7 @@
     <header class="topbar">
 
         <div class="brand-small">
-            <span class="logo-circle"><svg class="i"><use href="#i-wallet"/></svg></span>
+            <span class="logo-circle"><svg class="i"><use href="#i-shield"/></svg></span>
             <span class="wordmark">Monetra</span>
 
             <button type="button" class="guardian-btn" id="guardianButton" aria-label="Open Monetra Guardian"
@@ -182,71 +187,82 @@
 
         <section class="view-section active" id="homeView">
 
-            <div class="subtabs" data-group="home" role="tablist">
-                <button type="button" data-tab="overview" class="active">Overview</button>
-                <button type="button" data-tab="activity">Recent activity</button>
+            <!-- Safe to spend today, with the Overview / Recent activity switch -->
+
+            <div class="card home-hero">
+
+                <div class="home-hero-top">
+                    <button type="button" class="safe-spend" id="safeSpend" onclick="openMyMoney()">
+                        <span class="safe-label">SAFE TO SPEND TODAY</span>
+                        <strong class="safe-amount unknown" id="safeAmount">—</strong>
+                    </button>
+
+                    <div class="subtabs" data-group="home" role="tablist">
+                        <button type="button" data-tab="overview" class="active">Overview</button>
+                        <button type="button" data-tab="activity">Recent activity</button>
+                    </div>
+                </div>
+
+                <div class="hero-stats">
+                    <div class="hero-stat">
+                        <svg class="i"><use href="#i-wallet"/></svg>
+                        <span><span class="hero-stat-label">Balance</span><strong id="safeBalance">—</strong></span>
+                    </div>
+
+                    <div class="hero-stat">
+                        <svg class="i"><use href="#i-shield"/></svg>
+                        <span><span class="hero-stat-label">Protected</span><strong id="safeProtected">—</strong></span>
+                    </div>
+                </div>
+
+                <span class="safe-text" id="safeText"></span>
+
             </div>
 
             <div class="tab-panel" data-group="home" data-tab="overview">
 
-            <!-- the two main buttons: Send Money first, Check Balance second, styled the same -->
+            <div class="hero-actions">
+                <button type="button" class="big-action primary" onclick="navigateTo('paymentView', 'send')">
+                    <span class="dot"><svg class="i"><use href="#i-upright"/></svg></span>
+                    Send Money
+                </button>
 
-            <div class="card hero-card">
-                <div class="hero-actions">
-                    <button type="button" class="big-action" onclick="navigateTo('paymentView', 'send')">
-                        <span class="dot"><svg class="i"><use href="#i-send"/></svg></span>
-                        Send Money
-                        <span class="chev">›</span>
-                    </button>
-
-                    <button type="button" class="big-action" id="checkBalanceButton" onclick="openCheckBalance()">
-                        <span class="dot"><svg class="i"><use href="#i-bank"/></svg></span>
-                        Check Balance
-                        <span class="chev">›</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Safe to spend today: worked out by the server from the user's own balance -->
-
-            <div class="card safe-card">
-                <button type="button" class="safe-spend" id="safeSpend" onclick="openMyMoney()">
-                    <span class="safe-label">SAFE TO SPEND TODAY</span>
-                    <strong class="safe-amount unknown" id="safeAmount">—</strong>
-                    <span class="safe-text" id="safeText">Add your balance and income day in Spending to see this.</span>
-                    <span class="safe-sub" id="safeSub"></span>
+                <button type="button" class="big-action" id="checkBalanceButton" onclick="openCheckBalance()">
+                    <span class="dot"><svg class="i"><use href="#i-refresh"/></svg></span>
+                    Check Balance
                 </button>
             </div>
-
-            <!-- the three financial awareness cards: each opens its own page -->
 
             <div class="aware-grid">
 
                 <button type="button" class="aware-card" id="awareDaily" onclick="navigateTo('spendingView')">
-                    <span class="aware-head">
-                        <span class="aware-title"><svg class="i"><use href="#i-wallet"/></svg>Daily Budget</span>
-                        <span class="risk-chip" id="awareDailyChip">No limit set</span>
+                    <span class="ring" id="awareDailyRing" style="--p:0"><b>—</b></span>
+                    <span class="aware-body">
+                        <span class="aware-title">Daily Budget</span>
+                        <span class="aware-main" id="awareDailyMain">Set a limit</span>
+                        <span class="aware-sub" id="awareDailySub"></span>
                     </span>
-                    <span class="aware-main" id="awareDailyMain">Set a daily limit to see what is left today.</span>
-                    <span class="aware-sub" id="awareDailySub"></span>
+                    <span class="risk-chip" id="awareDailyChip">No limit set</span>
                 </button>
 
                 <button type="button" class="aware-card" id="awareLoans" onclick="navigateTo('loanView')">
-                    <span class="aware-head">
-                        <span class="aware-title"><svg class="i"><use href="#i-bank"/></svg>Loan Guardian</span>
-                        <span class="risk-chip" id="awareLoansChip">No loans</span>
+                    <span class="aware-icon"><svg class="i"><use href="#i-shield"/></svg></span>
+                    <span class="aware-body">
+                        <span class="aware-title">Loan Guardian</span>
+                        <span class="aware-main" id="awareLoansMain">Add a loan</span>
+                        <span class="aware-sub" id="awareLoansSub"></span>
                     </span>
-                    <span class="aware-main" id="awareLoansMain">Add a loan to see your EMIs and reminders.</span>
-                    <span class="aware-sub" id="awareLoansSub"></span>
+                    <span class="risk-chip" id="awareLoansChip">No loans</span>
                 </button>
 
                 <button type="button" class="aware-card" id="awareGoals" onclick="navigateTo('goalView')">
-                    <span class="aware-head">
-                        <span class="aware-title"><svg class="i"><use href="#i-target"/></svg>Savings Goals</span>
-                        <span class="risk-chip" id="awareGoalsChip">No goal</span>
+                    <span class="aware-icon"><svg class="i"><use href="#i-target"/></svg></span>
+                    <span class="aware-body">
+                        <span class="aware-title">Savings Goals</span>
+                        <span class="aware-main" id="awareGoalsMain">Add a goal</span>
+                        <span class="aware-sub" id="awareGoalsSub"></span>
                     </span>
-                    <span class="aware-main" id="awareGoalsMain">Create a goal and track it.</span>
-                    <span class="aware-sub" id="awareGoalsSub"></span>
+                    <span class="risk-chip" id="awareGoalsChip">No goal</span>
                 </button>
 
             </div>
@@ -254,15 +270,24 @@
             <div class="tile-grid">
 
                 <button type="button" class="tile" onclick="navigateTo('forecastView')">
-                    <span class="tile-icon"><svg class="i"><use href="#i-trend"/></svg></span>
-                    <strong>Spending Forecast</strong>
-                    <span class="sub" id="tileForecast">This month's pace.</span>
+                    <span class="tile-head">
+                        <span class="tile-icon"><svg class="i"><use href="#i-trend"/></svg></span>
+                        <span class="tile-text">
+                            <strong>Spending Forecast</strong>
+                            <span class="tile-status" id="tileForecast"></span>
+                        </span>
+                    </span>
+                    <svg class="spark" id="tileSpark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true"></svg>
                 </button>
 
                 <button type="button" class="tile" onclick="navigateTo('fraudView')">
-                    <span class="tile-icon"><svg class="i"><use href="#i-shield"/></svg></span>
-                    <strong>Fraud Guard Alerts</strong>
-                    <span class="sub" id="tileFraud">Every payment checked.</span>
+                    <span class="tile-head">
+                        <span class="tile-icon ok" id="tileFraudIcon"><svg class="i"><use href="#i-shield"/></svg></span>
+                        <span class="tile-text">
+                            <strong>Fraud Guard Alerts</strong>
+                            <span class="tile-status good" id="tileFraud">Secure</span>
+                        </span>
+                    </span>
                 </button>
 
             </div>
@@ -273,7 +298,6 @@
 
             <div class="card">
                 <div class="card-head">
-                    <h2>Recent Activity</h2>
                     <button type="button" class="small-button" onclick="navigateTo('transactionView')">View all</button>
                 </div>
 
@@ -542,7 +566,6 @@
             <form id="moneyForm" class="card">
 
                 <div class="card-head">
-                    <h2><svg class="i"><use href="#i-shield"/></svg>My money</h2>
                     <span class="pill-count" id="moneyNow">Not set</span>
                 </div>
 
@@ -580,7 +603,6 @@
             <div class="tab-panel hidden" data-group="spending" data-tab="week">
 
             <div class="card">
-                <h2>Spending, last 7 days</h2>
                 <div id="weekBars" class="bars"></div>
             </div>
 
@@ -589,7 +611,6 @@
             <div class="tab-panel hidden" data-group="spending" data-tab="add">
 
             <form id="expenseForm" class="card">
-                <h2>Record an expense</h2>
                 <p class="hint">Monetra payments are added automatically.</p>
 
                 <div class="pay-row">
@@ -631,7 +652,6 @@
 
             <div class="card">
                 <div class="card-head">
-                    <h2><svg class="i"><use href="#i-shield"/></svg>Loan Guardian</h2>
                     <span class="risk-chip" id="loanRiskChip">No loans</span>
                 </div>
 
@@ -649,7 +669,6 @@
             <div class="tab-panel hidden" data-group="loan" data-tab="calendar">
 
             <div class="card">
-                <h2>Upcoming EMIs</h2>
 
                 <div id="loanCalendar" class="record-list"></div>
             </div>
@@ -660,7 +679,7 @@
 
             <form id="loanForm" class="card">
 
-                <h2 id="loanFormTitle">Add Loan / EMI</h2>
+                <h2 id="loanFormTitle" class="hidden">Add Loan / EMI</h2>
 
                 <div class="two-col">
                     <div>
@@ -724,7 +743,6 @@
 
             <div class="card">
                 <div class="card-head">
-                    <h2>Your Loans</h2>
                     <span class="pill-count" id="loanCount">0 ACTIVE</span>
                 </div>
 
@@ -756,7 +774,7 @@
 
             <form id="goalForm" class="card">
 
-                <h2 id="goalFormTitle">Create a Goal</h2>
+                <h2 id="goalFormTitle" class="hidden">Create a Goal</h2>
 
                 <div class="two-col">
                     <div class="wide">
@@ -804,7 +822,6 @@
             <div class="tab-panel" data-group="goal" data-tab="list">
 
             <div class="card">
-                <h2>Your goals</h2>
                 <div id="goalsList" class="record-list"></div>
             </div>
 
@@ -815,7 +832,6 @@
             <form id="savingsForm" class="card">
 
                 <div class="card-head">
-                    <h2>Record Savings</h2>
                     <span class="pill-count" id="savingsTotal">₹0.00</span>
                 </div>
 
@@ -852,7 +868,6 @@
 
             <form id="planForm" class="card">
 
-                <h2><svg class="i"><use href="#i-target"/></svg>Smart Buy Planner</h2>
 
                 <div class="two-col">
                     <div>
@@ -910,31 +925,50 @@
 
             <div class="card bank-card" id="bankCard">
 
-                <div class="bank-row">
-                    <span class="bank-label">Bank Account</span>
-                    <select id="bankAccountSelect" class="hidden" aria-label="Bank account"></select>
-                    <strong id="bankAccountName">No bank account linked</strong>
-                </div>
+                <div class="bank-boxes">
 
-                <div class="bank-row bank-main">
-                    <span class="bank-label">Balance</span>
-                    <strong class="bank-balance" id="bankBalance">—</strong>
-                </div>
+                    <div class="bank-box">
+                        <span class="bank-icon"><svg class="i"><use href="#i-bank"/></svg></span>
+                        <div class="bank-text bank-inline">
+                            <span class="bank-label">Bank Account</span>
+                            <select id="bankAccountSelect" class="hidden" aria-label="Bank account"></select>
+                            <strong id="bankAccountName">No bank account linked</strong>
+                        </div>
+                        <svg class="bank-art" aria-hidden="true"><use href="#i-cardplus"/></svg>
+                    </div>
 
-                <div class="bank-row">
-                    <span class="bank-label">Last Checked</span>
-                    <strong id="bankLastChecked">Not yet</strong>
+                    <div class="bank-box bank-main">
+                        <span class="bank-icon"><svg class="i"><use href="#i-coin"/></svg></span>
+                        <div class="bank-text">
+                            <span class="bank-label">Balance</span>
+                            <strong class="bank-balance" id="bankBalance">—</strong>
+                            <span class="bank-hint">Link a bank to see your balance.</span>
+                        </div>
+                        <svg class="i bank-chev" aria-hidden="true"><use href="#i-chev"/></svg>
+                    </div>
+
+                    <div class="bank-box">
+                        <span class="bank-icon"><svg class="i"><use href="#i-clock"/></svg></span>
+                        <div class="bank-text">
+                            <span class="bank-label">Last Checked</span>
+                            <strong id="bankLastChecked">Not yet</strong>
+                            <span class="bank-hint">Updates after you link a bank.</span>
+                        </div>
+                        <svg class="i bank-chev" aria-hidden="true"><use href="#i-chev"/></svg>
+                    </div>
+
                 </div>
 
                 <div id="bankMessage" class="message" role="status" aria-live="polite"></div>
 
-                <div class="button-row">
+                <div class="button-row bank-actions">
                     <button type="button" id="bankBack">Go Back</button>
                     <button type="button" class="btn-gold" id="bankRefresh">Refresh Balance</button>
+                    <button type="button" class="btn-gold hidden" id="bankLinkFirst">Link Bank Account</button>
                 </div>
 
                 <div class="bank-manage">
-                    <button type="button" class="link-button" id="bankLink">Link Bank Account</button>
+                    <button type="button" class="link-button hidden" id="bankLink">Link another account</button>
                     <button type="button" class="link-button hidden" id="bankPrimary">Make this my main account</button>
                     <button type="button" class="link-button hidden" id="bankRemove">Remove this account</button>
                 </div>
@@ -962,7 +996,6 @@
 
             <div class="card">
                 <div class="card-head">
-                    <h2>PayPal Payment Status</h2>
                     <button type="button" class="small-button" id="refreshPaypalButton">Refresh</button>
                 </div>
 
@@ -974,9 +1007,6 @@
             <div class="tab-panel" data-group="tx" data-tab="history">
 
             <div class="card">
-                <div class="card-head">
-                    <h2>Transaction History</h2>
-                </div>
 
                 <div class="chips" id="historyFilters">
                     <button type="button" class="chip active" data-filter="all">All</button>
@@ -1021,7 +1051,6 @@
             <div class="tab-panel hidden" data-group="forecast" data-tab="ai">
 
             <div class="card">
-                <h2><svg class="i"><use href="#i-trend"/></svg>Guardian AI</h2>
 
                 <div id="forecastAi"></div>
 
@@ -1051,7 +1080,6 @@
             <div class="tab-panel" data-group="fraud" data-tab="alerts">
 
             <div class="card">
-                <h2><svg class="i"><use href="#i-shield"/></svg>Payments that needed confirmation</h2>
                 <div id="fraudList" class="record-list"></div>
             </div>
 
@@ -1060,7 +1088,6 @@
             <div class="tab-panel hidden" data-group="fraud" data-tab="rules">
 
             <div class="card">
-                <h2>What the Guardian watches for</h2>
                 <div class="record-list">
                     <div class="record-item"><div><strong>First payment, large amount</strong><div class="sub">A first payment of ₹5,000 or more to someone new.</div></div></div>
                     <div class="record-item"><div><strong>Unusual amount</strong><div class="sub">More than 3 times your usual payment.</div></div></div>
@@ -1105,7 +1132,6 @@
 
                 <form id="scamForm" class="card">
 
-                    <h2><svg class="i"><use href="#i-shield"/></svg>Scam Shield</h2>
 
                     <p class="hint keep">Your message is not saved.</p>
 
@@ -1125,7 +1151,6 @@
                 <div class="tab-panel fill" data-group="gai" data-tab="chat">
 
                 <div class="card" id="agentCard">
-                    <h2><svg class="i"><use href="#i-robot"/></svg>AI Financial Guardian</h2>
 
                     <div class="chips" id="agentSuggestions">
                         <button type="button" class="chip" data-q="Can I afford a purchase of ₹2,000?">Can I afford ₹2,000?</button>
@@ -1151,7 +1176,6 @@
 
                 <div class="card">
                     <div class="card-head">
-                        <h2><svg class="i"><use href="#i-pay"/></svg>PayPal Payment System</h2>
                         <button type="button" class="small-button" id="gRefreshPayments">Refresh</button>
                     </div>
 
@@ -1192,13 +1216,8 @@
                 <div class="tab-panel" data-group="ghome" data-tab="todo">
 
                 <div class="card" id="homeCard">
-                    <div class="card-head">
-                        <h2><svg class="i"><use href="#i-bank"/></svg>Home Expense Guardian</h2>
-                    </div>
-
                     <div id="homeSummary" class="stat-grid"></div>
 
-                    <h3 class="sub-title">To do</h3>
 
                     <div id="homeDue" class="record-list"></div>
                 </div>
@@ -1209,7 +1228,6 @@
 
                 <form id="homeForm" class="card">
 
-                    <h2>Add a household expense</h2>
 
                     <div class="two-col">
                         <div>
@@ -1258,7 +1276,6 @@
 
                 <div class="card">
                     <div class="card-head">
-                        <h2>Monthly report</h2>
                         <span class="month-nav">
                             <button type="button" class="small-button" id="homePrevMonth" aria-label="Previous month">‹</button>
                             <span id="homeMonthLabel"></span>
@@ -1274,7 +1291,6 @@
                 <div class="tab-panel hidden" data-group="ghome" data-tab="all">
 
                 <div class="card">
-                    <h2>All household expenses</h2>
 
                     <div id="homeAll" class="record-list"></div>
                 </div>
@@ -1407,23 +1423,22 @@
 
                 <form id="heReminderForm" class="card">
 
-                    <h2><svg class="i"><use href="#i-bell"/></svg>HE Reminder Notifications</h2>
 
                     <div class="he-reminder">
                         <label class="check-row"><input type="checkbox" id="heRemDailyOn">Daily reminders</label>
-                        <div><label for="heRemDailyTime">At</label><input type="time" id="heRemDailyTime" value="09:00"></div>
+                        <div class="time-cell"><label for="heRemDailyTimeH">At</label><span class="time-pick"><input type="hidden" id="heRemDailyTime" value="09:00"></span></div>
                     </div>
 
                     <div class="he-reminder">
                         <label class="check-row"><input type="checkbox" id="heRemMonthlyOn">Monthly reminders</label>
                         <div><label for="heRemMonthlyDay">Day</label><input type="number" id="heRemMonthlyDay" min="1" max="31" step="1" value="1"></div>
-                        <div><label for="heRemMonthlyTime">At</label><input type="time" id="heRemMonthlyTime" value="09:00"></div>
+                        <div class="time-cell"><label for="heRemMonthlyTimeH">At</label><span class="time-pick"><input type="hidden" id="heRemMonthlyTime" value="09:00"></span></div>
                     </div>
 
                     <div class="he-reminder">
                         <label class="check-row"><input type="checkbox" id="heRemYearlyOn">Yearly reminders</label>
                         <div><label for="heRemYearlyDate">Date</label><input type="date" id="heRemYearlyDate"></div>
-                        <div><label for="heRemYearlyTime">At</label><input type="time" id="heRemYearlyTime" value="09:00"></div>
+                        <div class="time-cell"><label for="heRemYearlyTimeH">At</label><span class="time-pick"><input type="hidden" id="heRemYearlyTime" value="09:00"></span></div>
                     </div>
 
                     <p class="hint">Reminders show in notifications while Monetra is open.</p>
@@ -1440,7 +1455,6 @@
 
                 <div class="card">
                     <div class="card-head">
-                        <h2>HE Transaction History</h2>
                         <button type="button" class="small-button" id="heRefresh">Refresh</button>
                     </div>
 
@@ -1479,7 +1493,6 @@
 
 
             <div class="card">
-                <h2>Guardian notifications</h2>
 
                 <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending: close to or over your limit</label>
                 <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans: EMI coming up, due today or not marked paid</label>
