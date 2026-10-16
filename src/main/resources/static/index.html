@@ -27,6 +27,7 @@
         <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></symbol>
         <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5L15.5 10"/></symbol>
         <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-9M15 6h6v6"/></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
         <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0"/></symbol>
         <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
         <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
@@ -175,13 +176,17 @@
                 <span class="badge-dot hidden" id="bellBadge">0</span>
             </button>
 
+            <button type="button" class="icon-button settings-button" id="settingsButton" aria-label="Settings" title="Settings"
+                    onclick="openSettings()">
+                <svg class="i"><use href="#i-gear"/></svg>
+            </button>
+
             <span class="avatar" id="dashboardAvatar">M</span>
 
             <button type="button" class="logout-button" id="logoutButton">Log Out</button>
 
-            <button type="button" class="score-b unknown" id="scoreButton" onclick="openScore()">
+            <button type="button" class="score-b unknown" id="scoreButton" onclick="openScore()" aria-label="Guardian Score">
                 <span class="score-b-letter">B</span>
-                <span class="score-b-value" id="scoreButtonValue">—</span>
             </button>
         </div>
 
@@ -1507,7 +1512,6 @@
             <div class="subtabs" data-group="notif" role="tablist">
                 <button type="button" data-tab="list" class="active">Payments &amp; Alerts<span class="tab-count hidden" id="notifCountMoney"></span></button>
                 <button type="button" data-tab="badges">Badges<span class="tab-count hidden" id="notifCountBadges"></span></button>
-                <button type="button" data-tab="settings">Settings</button>
             </div>
 
             <div class="tab-panel" data-group="notif" data-tab="list">
@@ -1528,17 +1532,46 @@
 
             </div>
 
-            <div class="tab-panel hidden" data-group="notif" data-tab="settings">
+        </section>
 
+        <!-- ================= SETTINGS (the gear, top right) ================= -->
 
-            <div class="card">
+        <section class="view-section" id="settingsView">
 
-                <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending</label>
-                <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans and EMIs</label>
-                <label class="check-row"><input type="checkbox" id="notifySavings" checked>Savings goals</label>
-                <label class="check-row"><input type="checkbox" id="notifyScoreDaily" checked>Daily Guardian Score</label>
-                <label class="check-row"><input type="checkbox" id="notifyBadges" checked>New badges</label>
-                <label class="check-row"><input type="checkbox" id="notifyDevice">Show on this device</label>
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Settings</h1>
+            </div>
+
+            <!-- Notifications: how Monetra tells you, and about what -->
+
+            <div class="tab-panel" data-group="settings" data-tab="notify">
+
+            <div class="card settings-card">
+                <div class="option-grid three" role="radiogroup" aria-label="How Monetra notifies you">
+                    <button type="button" class="option-card" role="radio" data-mode="SOUND_ONLY">
+                        <span class="option-icon" aria-hidden="true">🔔</span><span class="option-name">Sound only</span>
+                    </button>
+                    <button type="button" class="option-card" role="radio" data-mode="VIBRATION_ONLY">
+                        <span class="option-icon" aria-hidden="true">📳</span><span class="option-name">Vibration only</span>
+                    </button>
+                    <button type="button" class="option-card" role="radio" data-mode="BOTH">
+                        <span class="option-icon" aria-hidden="true">🔔📳</span><span class="option-name">Sound + Vibration</span>
+                    </button>
+                </div>
+
+                <p class="settings-note hidden" id="vibrateNote">This device cannot vibrate.</p>
+
+                <button type="button" class="small-button settings-test" id="testNotify">🔔 Test notification</button>
+
+                <div class="settings-switches">
+                    <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending</label>
+                    <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans and EMIs</label>
+                    <label class="check-row"><input type="checkbox" id="notifySavings" checked>Savings goals</label>
+                    <label class="check-row"><input type="checkbox" id="notifyScoreDaily" checked>Daily Guardian Score</label>
+                    <label class="check-row"><input type="checkbox" id="notifyBadges" checked>New badges</label>
+                    <label class="check-row"><input type="checkbox" id="notifyDevice">Show on this device</label>
+                </div>
             </div>
 
             </div>

@@ -87,7 +87,8 @@ const PARENT_VIEW = {
     guardianView: 'none',
     heView: 'none',
     bankView: 'homeView',
-    scoreView: 'homeView'
+    scoreView: 'homeView',
+    settingsView: 'none'
 };
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
@@ -728,6 +729,8 @@ async function openDashboard(profile) {
     document.body.classList.remove('auth-mode');
 
     await loadRecords();
+
+    adoptAccountPrefs();
 
     renderAll();
 
@@ -2156,7 +2159,11 @@ function fraudBox(index, risk) {
     tick.id = 'riskConfirm';
 
     tick.addEventListener('change', () => {
-        $('continuePaypal').disabled = !tick.checked;
+        label.classList.remove('needs-tick');
+
+        if (tick.checked) {
+            $('reviewMessage').textContent = '';
+        }
     });
 
     label.appendChild(tick);
@@ -2313,7 +2320,8 @@ async function startReview() {
 
     const continueButton = $('continuePaypal');
 
-    continueButton.disabled = risk.flagged;
+    /* Always pressable: with a Fraud Guard notice, pressing it first asks for the tick (see below). */
+    continueButton.disabled = false;
     continueButton.textContent = warn ? 'Continue Anyway' : 'Continue to PayPal';
 
     $('reviewMessage').textContent = '';
@@ -2447,6 +2455,18 @@ $('continuePaypal').addEventListener('click', async function() {
     const message = $('reviewMessage');
     const confirm = $('riskConfirm');
 
+    /* A Fraud Guard notice needs the user's tick first: say so and show where, instead of doing nothing. */
+    if (confirm && !confirm.checked) {
+        const row = confirm.closest('label');
+
+        message.textContent = 'Tick "I know this recipient" in the Fraud Guard box first.';
+
+        row.classList.add('needs-tick');
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        confirm.focus({ preventScroll: true });
+        return;
+    }
+
     button.disabled = true;
 
     message.textContent = 'Creating your PayPal Sandbox order...';
@@ -2542,6 +2562,9 @@ async function handlePaypalReturn(params) {
                     'bad-box'
                 );
             }
+
+            /* Confirmed or failed: the chosen sound or vibration, once (the browser may not allow it yet). */
+            notifyAlert();
 
         } else {
             show('This payment link is not valid.', 'bad-box');
@@ -2977,6 +3000,9 @@ async function pollNotifications() {
 
         if (fresh.length) {
             const latest = fresh[fresh.length - 1];
+
+            /* One sound or buzz for everything that arrived together, never one per item. */
+            notifyAlert();
 
             showToast('🔔 ' + (NOTIFICATION_TITLES[latest.type] ? NOTIFICATION_TITLES[latest.type] + ': ' : '') + latest.message, 7000);
 
@@ -5880,7 +5906,7 @@ function renderScoreButton() {
     const s = guardianScore;
     const known = !!(s && s.available);
 
-    $('scoreButtonValue').textContent = known ? s.score + '/100' : '—';
+    /* The button shows only "B"; the score itself is on the Guardian Score screen. */
     $('scoreButton').classList.toggle('unknown', !known);
 }
 
@@ -6112,6 +6138,243 @@ function renderScoreTips() {
             return item;
         });
 }
+
+
+/* ==============================
+   SETTINGS (the gear, top right)
+   Kept for the signed-in account in its records, and on this device so the sign-in page
+   opens the same way before anyone signs in.
+================================ */
+
+const PREFS_KEY = 'monetraPrefs';
+
+const NOTIFY_MODES = ['SOUND_ONLY', 'VIBRATION_ONLY', 'BOTH'];
+
+function defaultPrefs() {
+    return { notifyMode: 'SOUND_ONLY' };
+}
+
+/* Only known values are kept, so a broken saved value can never break the page. */
+
+function cleanPrefs(raw) {
+    const p = { ...defaultPrefs() };
+    const r = raw && typeof raw === 'object' ? raw : {};
+
+    if (NOTIFY_MODES.includes(r.notifyMode)) {
+        p.notifyMode = r.notifyMode;
+    }
+
+    return p;
+}
+
+function localPrefs() {
+    try {
+        return cleanPrefs(JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'));
+    } catch (error) {
+        return defaultPrefs();
+    }
+}
+
+let prefs = localPrefs();
+
+function keepPrefsHere() {
+    try {
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch (error) {
+        /* Storage unavailable: the account still keeps them. */
+    }
+}
+
+/* Saves one or more choices, applies them at once, and keeps them for the account. */
+
+function savePrefs(changes) {
+    prefs = cleanPrefs({ ...prefs, ...changes });
+
+    keepPrefsHere();
+
+    if (me.email) {
+        records.profile.prefs = { ...prefs };
+        saveRecords();
+    }
+
+    applyPrefs();
+}
+
+/* Signed in: the account's choices are used; an account without any keeps this device's. */
+
+function adoptAccountPrefs() {
+    const saved = records.profile && records.profile.prefs;
+
+    if (saved && typeof saved === 'object') {
+        prefs = cleanPrefs(saved);
+        keepPrefsHere();
+
+    } else {
+        records.profile.prefs = { ...prefs };
+        saveRecords();
+    }
+
+    applyPrefs();
+}
+
+function applyPrefs() {
+    renderSettings();
+}
+
+function openSettings() {
+    navigateTo('settingsView');
+    renderSettings();
+}
+
+function canVibrate() {
+    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+}
+
+function renderSettings() {
+    if (!$('settingsView')) {
+        return;
+    }
+
+    document.querySelectorAll('#settingsView [data-mode]').forEach(card => {
+        const chosen = card.dataset.mode === prefs.notifyMode;
+
+        card.classList.toggle('chosen', chosen);
+        card.setAttribute('aria-checked', chosen ? 'true' : 'false');
+    });
+
+    /* Said only when it matters: vibration was chosen and this device has none. */
+    $('vibrateNote').classList.toggle('hidden', prefs.notifyMode === 'SOUND_ONLY' || canVibrate());
+}
+
+document.querySelectorAll('#settingsView [data-mode]').forEach(card => {
+    card.addEventListener('click', () => {
+        savePrefs({ notifyMode: card.dataset.mode });
+        notifyAlert();
+    });
+});
+
+$('testNotify').addEventListener('click', () => {
+    const played = notifyAlert();
+
+    showToast(played
+        ? '🔔 This is how Monetra tells you about something new.'
+        : 'This device cannot play the sound or vibrate right now.');
+});
+
+/* ==============================
+   NOTIFICATION SOUND AND VIBRATION
+   The Monetra chime is made by the browser itself, so there is no sound file to download.
+   Browsers only allow sound after the user has touched the page once.
+================================ */
+
+let chimeContext = null;
+
+function audioContext() {
+    const Audio = window.AudioContext || window.webkitAudioContext;
+
+    if (!Audio) {
+        return null;
+    }
+
+    if (!chimeContext) {
+        try {
+            chimeContext = new Audio();
+        } catch (error) {
+            return null;
+        }
+    }
+
+    return chimeContext;
+}
+
+/* The first touch or key press unlocks sound for the rest of the visit. */
+
+['pointerdown', 'keydown'].forEach(type => {
+    window.addEventListener(type, () => {
+        const ctx = audioContext();
+
+        if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+    }, { passive: true });
+});
+
+/* Two soft rising notes. False when the browser does not allow sound right now. */
+
+function playChime() {
+    const ctx = audioContext();
+
+    if (!ctx) {
+        return false;
+    }
+
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+
+        if (ctx.state === 'suspended') {
+            return false;
+        }
+    }
+
+    try {
+        const now = ctx.currentTime;
+
+        [[880, 0], [1318.5, 0.13]].forEach(([frequency, start]) => {
+            const tone = ctx.createOscillator();
+            const volume = ctx.createGain();
+
+            tone.type = 'sine';
+            tone.frequency.value = frequency;
+
+            volume.gain.setValueAtTime(0.0001, now + start);
+            volume.gain.exponentialRampToValueAtTime(0.22, now + start + 0.02);
+            volume.gain.exponentialRampToValueAtTime(0.0001, now + start + 0.5);
+
+            tone.connect(volume);
+            volume.connect(ctx.destination);
+
+            tone.start(now + start);
+            tone.stop(now + start + 0.55);
+        });
+
+        return true;
+
+    } catch (error) {
+        return false;
+    }
+}
+
+function buzz() {
+    if (!canVibrate()) {
+        return false;
+    }
+
+    try {
+        return navigator.vibrate([120, 80, 120]) !== false;
+    } catch (error) {
+        return false;
+    }
+}
+
+/* Sound, vibration or both, as chosen in Settings. True when anything played. */
+
+function notifyAlert() {
+    const mode = prefs.notifyMode;
+
+    let done = false;
+
+    if (mode !== 'VIBRATION_ONLY') {
+        done = playChime() || done;
+    }
+
+    if (mode !== 'SOUND_ONLY') {
+        done = buzz() || done;
+    }
+
+    return done;
+}
+
+applyPrefs();
 
 /* ==============================
    INITIAL PAGE
