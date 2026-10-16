@@ -133,6 +133,7 @@ public class GuardianController {
     private final PurchasePlannerService planner;
     private final ScamShieldService scamShield;
     private final ScamReportRepository scamReports;
+    private final GuardianScoreService score;
 
     public GuardianController(
             UserDataRepository store,
@@ -140,7 +141,8 @@ public class GuardianController {
             GuardianAnalysisService guardian,
             PurchasePlannerService planner,
             ScamShieldService scamShield,
-            ScamReportRepository scamReports) {
+            ScamReportRepository scamReports,
+            GuardianScoreService score) {
 
         this.store = store;
         this.ai = ai;
@@ -148,6 +150,51 @@ public class GuardianController {
         this.planner = planner;
         this.scamShield = scamShield;
         this.scamReports = scamReports;
+        this.score = score;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Guardian Score and badges                                           */
+    /* ------------------------------------------------------------------ */
+
+    /** The score, its five parts, level, badges and tips, worked out now from the user's own records. */
+    @GetMapping("/score")
+    public ResponseEntity<?> score(HttpSession session) {
+        Long userId = SessionUser.id(session);
+
+        if (userId == null) {
+            return error(HttpStatus.UNAUTHORIZED, "Please log in first.");
+        }
+
+        return ResponseEntity.ok(score.refresh(userId, java.time.Instant.now()));
+    }
+
+    /** The same, after saving the user's own time zone (as their browser reports it) for the daily update. */
+    @PostMapping("/score/refresh")
+    public ResponseEntity<?> refreshScore(@RequestBody(required = false) Map<String, Object> body, HttpSession session) {
+        Long userId = SessionUser.id(session);
+
+        if (userId == null) {
+            return error(HttpStatus.UNAUTHORIZED, "Please log in first.");
+        }
+
+        if (body != null && body.get("timezone") != null && !score.setTimezone(userId, String.valueOf(body.get("timezone")))) {
+            return error(HttpStatus.BAD_REQUEST, "That is not a known time zone.");
+        }
+
+        return ResponseEntity.ok(score.refresh(userId, java.time.Instant.now()));
+    }
+
+    /** The recorded daily scores, newest first. */
+    @GetMapping("/score/history")
+    public ResponseEntity<?> scoreHistory(HttpSession session) {
+        Long userId = SessionUser.id(session);
+
+        if (userId == null) {
+            return error(HttpStatus.UNAUTHORIZED, "Please log in first.");
+        }
+
+        return ResponseEntity.ok(score.history(userId));
     }
 
     private final ObjectMapper mapper = new ObjectMapper();

@@ -28,6 +28,7 @@ public class PaymentService {
     private final NotificationRepository notifications;
     private final HomeExpenseService home;
     private final PaypalClient paypal;
+    private final GuardianScoreService score;
 
     /** One lock object per payment, so two requests for the same payment cannot overlap. */
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
@@ -37,13 +38,15 @@ public class PaymentService {
             UserAccountRepository users,
             NotificationRepository notifications,
             HomeExpenseService home,
-            PaypalClient paypal) {
+            PaypalClient paypal,
+            GuardianScoreService score) {
 
         this.payments = payments;
         this.users = users;
         this.notifications = notifications;
         this.home = home;
         this.paypal = paypal;
+        this.score = score;
     }
 
     public Object lock(String paymentId) {
@@ -82,6 +85,9 @@ public class PaymentService {
                 log.warn("Could not link payment {} to its household expense", rec.paymentId, e);
             }
         }
+
+        /* Only a payment PayPal confirmed reaches the Guardian Score. */
+        score.refreshQuietly(rec.userId);
 
         payoutIfPossible(rec);
     }

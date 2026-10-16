@@ -39,6 +39,7 @@
         <symbol id="i-family" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5.2a3.2 3.2 0 0 1 0 5.8M18.5 14.4c2 .7 3 2.5 3 5.6"/></symbol>
         <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
         <symbol id="i-robot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16.5h5"/></symbol>
+        <symbol id="i-shieldrupee" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9.5 8.5h5M9.5 10.5h5M10 8.5c2.6 0 2.6 4 0 4l3.5 3"/></symbol>
         <symbol id="i-upright" viewBox="0 0 24 24"><path d="M7 17L17 7M8.5 7H17v8.5"/></symbol>
         <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></symbol>
         <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></symbol>
@@ -169,7 +170,7 @@
         <div class="topbar-right">
             <span id="dashboardUser"></span>
 
-            <button type="button" class="icon-button" id="bellButton" aria-label="Notifications" onclick="navigateTo('notifView')">
+            <button type="button" class="icon-button" id="bellButton" aria-label="Notifications" onclick="openNotifications()">
                 <svg class="i"><use href="#i-bell"/></svg>
                 <span class="badge-dot hidden" id="bellBadge">0</span>
             </button>
@@ -177,6 +178,11 @@
             <span class="avatar" id="dashboardAvatar">M</span>
 
             <button type="button" class="logout-button" id="logoutButton">Log Out</button>
+
+            <button type="button" class="score-b unknown" id="scoreButton" onclick="openScore()">
+                <span class="score-b-letter">B</span>
+                <span class="score-b-value" id="scoreButtonValue">—</span>
+            </button>
         </div>
 
     </header>
@@ -187,20 +193,57 @@
 
         <section class="view-section active" id="homeView">
 
-            <!-- Safe to spend today, with the Overview / Recent activity switch -->
+            <div class="subtabs" data-group="home" role="tablist">
+                <button type="button" data-tab="overview" class="active">Overview</button>
+                <button type="button" data-tab="activity">Recent activity</button>
+            </div>
+
+            <div class="tab-panel" data-group="home" data-tab="overview">
+
+            <!-- Safe to spend today: worked out by the server from the user's own balance -->
 
             <div class="card home-hero">
 
-                <div class="home-hero-top">
+                <div class="hero-main">
                     <button type="button" class="safe-spend" id="safeSpend" onclick="openMyMoney()">
                         <span class="safe-label">SAFE TO SPEND TODAY</span>
                         <strong class="safe-amount unknown" id="safeAmount">—</strong>
+                        <span class="safe-avail hidden" id="safeAvail">
+                            <span>Available today</span>
+                            <span class="safe-meter"><i id="safeMeter" style="--p:0"></i></span>
+                            <b id="safePercent"></b>
+                        </span>
+                        <span class="safe-text" id="safeText"></span>
                     </button>
 
-                    <div class="subtabs" data-group="home" role="tablist">
-                        <button type="button" data-tab="overview" class="active">Overview</button>
-                        <button type="button" data-tab="activity">Recent activity</button>
-                    </div>
+                    <svg class="hero-shield" viewBox="0 0 120 130" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="heroGold" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#ffe9a8"/>
+                                <stop offset="0.45" stop-color="#f2c45c"/>
+                                <stop offset="1" stop-color="#b8862a"/>
+                            </linearGradient>
+                            <linearGradient id="heroInk" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="#1d2d63"/>
+                                <stop offset="1" stop-color="#0b1638"/>
+                            </linearGradient>
+                            <radialGradient id="heroGlow" cx="0.5" cy="0.5" r="0.5">
+                                <stop offset="0" stop-color="#f2c45c" stop-opacity="0.32"/>
+                                <stop offset="1" stop-color="#f2c45c" stop-opacity="0"/>
+                            </radialGradient>
+                        </defs>
+                        <circle cx="60" cy="58" r="58" fill="url(#heroGlow)"/>
+                        <ellipse cx="60" cy="121" rx="42" ry="7" fill="#000" opacity="0.35"/>
+                        <ellipse cx="60" cy="117" rx="36" ry="6" fill="none" stroke="url(#heroGold)" stroke-width="1.4" opacity="0.8"/>
+                        <path d="M60 6 L104 22 V58 C104 86 86 104 60 114 C34 104 16 86 16 58 V22 Z" fill="url(#heroGold)"/>
+                        <path d="M60 14 L96 27 V58 C96 81 81 96 60 105 C39 96 24 81 24 58 V27 Z" fill="url(#heroInk)"/>
+                        <rect x="38" y="36" width="44" height="44" rx="7" fill="#22336e" stroke="url(#heroGold)" stroke-width="1.6"/>
+                        <circle cx="60" cy="58" r="12.5" fill="none" stroke="url(#heroGold)" stroke-width="2.2"/>
+                        <circle cx="60" cy="58" r="3.6" fill="url(#heroGold)"/>
+                        <path d="M60 46v6M60 64v6M48 58h6M66 58h6M51.5 49.5l4 4M64.5 62.5l4 4M68.5 49.5l-4 4M55.5 62.5l-4 4"
+                              stroke="url(#heroGold)" stroke-width="2" stroke-linecap="round"/>
+                        <rect x="78.5" y="50" width="4" height="16" rx="2" fill="url(#heroGold)"/>
+                    </svg>
                 </div>
 
                 <div class="hero-stats">
@@ -215,11 +258,7 @@
                     </div>
                 </div>
 
-                <span class="safe-text" id="safeText"></span>
-
             </div>
-
-            <div class="tab-panel" data-group="home" data-tab="overview">
 
             <div class="hero-actions">
                 <button type="button" class="big-action primary" onclick="navigateTo('paymentView', 'send')">
@@ -233,61 +272,58 @@
                 </button>
             </div>
 
-            <div class="aware-grid">
+            <!-- Daily budget, loans, goals, forecast and fraud: one row each, each opens its own page -->
 
-                <button type="button" class="aware-card" id="awareDaily" onclick="navigateTo('spendingView')">
-                    <span class="ring" id="awareDailyRing" style="--p:0"><b>—</b></span>
-                    <span class="aware-body">
-                        <span class="aware-title">Daily Budget</span>
-                        <span class="aware-main" id="awareDailyMain">Set a limit</span>
-                        <span class="aware-sub" id="awareDailySub"></span>
+            <div class="home-list">
+
+                <button type="button" class="home-row" id="awareDaily" onclick="navigateTo('spendingView')">
+                    <span class="row-icon"><svg class="i"><use href="#i-wallet"/></svg></span>
+                    <span class="row-text">
+                        <span class="row-title">Daily Budget</span>
+                        <span class="row-sub"><span class="aware-main" id="awareDailyMain">Set a limit</span><span class="aware-sub" id="awareDailySub"></span></span>
                     </span>
                     <span class="risk-chip" id="awareDailyChip">No limit set</span>
+                    <span class="ring" id="awareDailyRing" style="--p:0"><b>—</b></span>
+                    <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
-                <button type="button" class="aware-card" id="awareLoans" onclick="navigateTo('loanView')">
-                    <span class="aware-icon"><svg class="i"><use href="#i-shield"/></svg></span>
-                    <span class="aware-body">
-                        <span class="aware-title">Loan Guardian</span>
-                        <span class="aware-main" id="awareLoansMain">Add a loan</span>
-                        <span class="aware-sub" id="awareLoansSub"></span>
+                <button type="button" class="home-row" id="awareLoans" onclick="navigateTo('loanView')">
+                    <span class="row-icon"><svg class="i"><use href="#i-shieldrupee"/></svg></span>
+                    <span class="row-text">
+                        <span class="row-title">Loan Guardian</span>
+                        <span class="row-sub"><span class="aware-main" id="awareLoansMain">Add a loan</span><span class="aware-sub" id="awareLoansSub"></span></span>
                     </span>
                     <span class="risk-chip" id="awareLoansChip">No loans</span>
+                    <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
-                <button type="button" class="aware-card" id="awareGoals" onclick="navigateTo('goalView')">
-                    <span class="aware-icon"><svg class="i"><use href="#i-target"/></svg></span>
-                    <span class="aware-body">
-                        <span class="aware-title">Savings Goals</span>
-                        <span class="aware-main" id="awareGoalsMain">Add a goal</span>
-                        <span class="aware-sub" id="awareGoalsSub"></span>
+                <button type="button" class="home-row" id="awareGoals" onclick="navigateTo('goalView')">
+                    <span class="row-icon"><svg class="i"><use href="#i-target"/></svg></span>
+                    <span class="row-text">
+                        <span class="row-title">Savings Goals</span>
+                        <span class="row-sub"><span class="aware-main" id="awareGoalsMain">Add a goal</span><span class="aware-sub" id="awareGoalsSub"></span></span>
                     </span>
                     <span class="risk-chip" id="awareGoalsChip">No goal</span>
+                    <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
-            </div>
-
-            <div class="tile-grid">
-
-                <button type="button" class="tile" onclick="navigateTo('forecastView')">
-                    <span class="tile-head">
-                        <span class="tile-icon"><svg class="i"><use href="#i-trend"/></svg></span>
-                        <span class="tile-text">
-                            <strong>Spending Forecast</strong>
-                            <span class="tile-status" id="tileForecast"></span>
-                        </span>
+                <button type="button" class="home-row" onclick="navigateTo('forecastView')">
+                    <span class="row-icon"><svg class="i"><use href="#i-trend"/></svg></span>
+                    <span class="row-text">
+                        <span class="row-title">Spending Forecast</span>
+                        <span class="row-sub"><span class="tile-status" id="tileForecast"></span></span>
                     </span>
                     <svg class="spark" id="tileSpark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true"></svg>
+                    <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
-                <button type="button" class="tile" onclick="navigateTo('fraudView')">
-                    <span class="tile-head">
-                        <span class="tile-icon ok" id="tileFraudIcon"><svg class="i"><use href="#i-shield"/></svg></span>
-                        <span class="tile-text">
-                            <strong>Fraud Guard Alerts</strong>
-                            <span class="tile-status good" id="tileFraud">Secure</span>
-                        </span>
+                <button type="button" class="home-row" onclick="navigateTo('fraudView')">
+                    <span class="row-icon ok" id="tileFraudIcon"><svg class="i"><use href="#i-shield"/></svg></span>
+                    <span class="row-text">
+                        <span class="row-title">Fraud Guard Alerts</span>
+                        <span class="row-sub"><span class="tile-status good" id="tileFraud">Secure</span></span>
                     </span>
+                    <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
             </div>
@@ -313,9 +349,8 @@
         <section class="view-section" id="paymentView">
 
             <div class="page-head">
-                <div>
-                    <h1>Pay</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Pay</h1>
             </div>
 
             <div class="seg" role="tablist">
@@ -513,9 +548,8 @@
         <section class="view-section" id="spendingView">
 
             <div class="page-head">
-                <div>
-                    <h1>Spending Limit</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Spending Limit</h1>
             </div>
 
             <div class="subtabs" data-group="spending" role="tablist">
@@ -636,7 +670,8 @@
 
         <section class="view-section" id="loanView">
 
-            <div class="page-head center">
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
                 <h1>Loans &amp; EMI Tracker</h1>
             </div>
 
@@ -759,7 +794,8 @@
 
         <section class="view-section" id="goalView">
 
-            <div class="page-head center">
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
                 <h1>Savings Goals</h1>
             </div>
 
@@ -917,7 +953,8 @@
 
         <section class="view-section" id="bankView">
 
-            <div class="page-head center">
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
                 <h1>Check Balance</h1>
             </div>
 
@@ -983,7 +1020,8 @@
 
         <section class="view-section" id="transactionView">
 
-            <div class="page-head center">
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
                 <h1>Transactions</h1>
             </div>
 
@@ -1029,10 +1067,8 @@
         <section class="view-section" id="forecastView">
 
             <div class="page-head">
-                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
-                <div>
-                    <h1>Spending Forecast</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Spending Forecast</h1>
             </div>
 
             <div class="subtabs" data-group="forecast" role="tablist">
@@ -1066,10 +1102,8 @@
         <section class="view-section" id="fraudView">
 
             <div class="page-head">
-                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
-                <div>
-                    <h1>Fraud Guard</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Fraud Guard</h1>
             </div>
 
             <div class="subtabs" data-group="fraud" role="tablist">
@@ -1105,10 +1139,8 @@
         <section class="view-section" id="guardianView">
 
             <div class="page-head">
-                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
-                <div>
-                    <h1>Monetra Guardian</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Monetra Guardian</h1>
             </div>
 
             <div class="seg" id="guardianTabs" role="tablist">
@@ -1306,10 +1338,8 @@
         <section class="view-section" id="heView">
 
             <div class="page-head">
-                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
-                <div>
-                    <h1>HE — Home Expenses</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>HE — Home Expenses</h1>
             </div>
 
             <div class="subtabs" data-group="he" role="tablist">
@@ -1470,14 +1500,13 @@
         <section class="view-section" id="notifView">
 
             <div class="page-head">
-                <button type="button" class="back" aria-label="Back" onclick="navigateTo('homeView')">‹</button>
-                <div>
-                    <h1>Notifications</h1>
-                </div>
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Notifications</h1>
             </div>
 
             <div class="subtabs" data-group="notif" role="tablist">
-                <button type="button" data-tab="list" class="active">Notifications</button>
+                <button type="button" data-tab="list" class="active">Payments &amp; Alerts<span class="tab-count hidden" id="notifCountMoney"></span></button>
+                <button type="button" data-tab="badges">Badges<span class="tab-count hidden" id="notifCountBadges"></span></button>
                 <button type="button" data-tab="settings">Settings</button>
             </div>
 
@@ -1489,14 +1518,162 @@
 
             </div>
 
+            <!-- The Guardian Score side: daily updates and every badge -->
+
+            <div class="tab-panel hidden" data-group="notif" data-tab="badges">
+
+            <div class="card">
+                <div id="notifBadgeList" class="record-list"></div>
+            </div>
+
+            </div>
+
             <div class="tab-panel hidden" data-group="notif" data-tab="settings">
 
 
             <div class="card">
 
-                <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending: close to or over your limit</label>
-                <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans: EMI coming up, due today or not marked paid</label>
-                <label class="check-row"><input type="checkbox" id="notifySavings" checked>Savings goals: reminders, progress and falling behind</label>
+                <label class="check-row"><input type="checkbox" id="notifyDaily" checked>Daily spending</label>
+                <label class="check-row"><input type="checkbox" id="notifyLoans" checked>Loans and EMIs</label>
+                <label class="check-row"><input type="checkbox" id="notifySavings" checked>Savings goals</label>
+                <label class="check-row"><input type="checkbox" id="notifyScoreDaily" checked>Daily Guardian Score</label>
+                <label class="check-row"><input type="checkbox" id="notifyBadges" checked>New badges</label>
+                <label class="check-row"><input type="checkbox" id="notifyDevice">Show on this device</label>
+            </div>
+
+            </div>
+
+        </section>
+
+        <!-- ================= GUARDIAN SCORE (opened with B on Home) ================= -->
+
+        <section class="view-section" id="scoreView">
+
+            <div class="page-head">
+                <button type="button" class="back" aria-label="Back" onclick="goBack()">‹</button>
+                <h1>Guardian Score</h1>
+            </div>
+
+            <div class="subtabs" data-group="score" role="tablist">
+                <button type="button" data-tab="overall" class="active">Score</button>
+                <button type="button" data-tab="parts">Parts</button>
+                <button type="button" data-tab="badges">Badges</button>
+                <button type="button" data-tab="improve">Improve</button>
+            </div>
+
+            <div class="tab-panel" data-group="score" data-tab="overall">
+
+            <!-- The score on a gold shield, like the user's picture -->
+
+            <div class="card score-hero">
+                <span class="score-label">ACHIEVEMENT</span>
+
+                <div class="score-shield">
+                    <svg viewBox="0 0 200 230" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="shieldRim" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#fff0b8"/>
+                                <stop offset="0.3" stop-color="#ecc35a"/>
+                                <stop offset="0.7" stop-color="#c8902a"/>
+                                <stop offset="1" stop-color="#9a6a18"/>
+                            </linearGradient>
+                            <radialGradient id="shieldFace" cx="0.38" cy="0.28" r="0.85">
+                                <stop offset="0" stop-color="#fff3c6"/>
+                                <stop offset="0.4" stop-color="#f4cf68"/>
+                                <stop offset="0.8" stop-color="#dba53b"/>
+                                <stop offset="1" stop-color="#c38b26"/>
+                            </radialGradient>
+                            <linearGradient id="shieldEdge" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="#a87219"/>
+                                <stop offset="1" stop-color="#e5b44c"/>
+                            </linearGradient>
+                        </defs>
+                        <path d="M100 6 L188 34 V104 C188 164 150 204 100 224 C50 204 12 164 12 104 V34 Z" fill="url(#shieldRim)"/>
+                        <path d="M100 22 L174 45 V105 C174 156 142 189 100 207 C58 189 26 156 26 105 V45 Z" fill="url(#shieldEdge)"/>
+                        <path d="M100 27 L169 49 V105 C169 153 139 184 100 201 C61 184 31 153 31 105 V49 Z" fill="url(#shieldFace)"/>
+                        <path d="M100 27 L169 49 V70 C130 58 80 62 31 92 V49 Z" fill="#ffffff" opacity="0.18"/>
+                    </svg>
+
+                    <span class="score-shield-text">
+                        <strong id="scoreValue">—</strong>
+                        <span id="scoreOutOf">/100</span>
+                    </span>
+                </div>
+
+                <span class="score-text" id="scoreConfidenceText"></span>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="score" data-tab="parts">
+
+            <div class="card">
+                <div class="seg score-sort" role="tablist" aria-label="Sort the parts">
+                    <button type="button" id="scoreSortHigh" class="active" onclick="sortScore('high')">Highest Score First</button>
+                    <button type="button" id="scoreSortLow" onclick="sortScore('low')">Lowest Score First</button>
+                </div>
+
+                <div id="scoreParts" class="record-list"></div>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="score" data-tab="badges">
+
+            <div class="card badge-card">
+                <div class="seg badge-seg" role="tablist" aria-label="Badges">
+                    <button type="button" id="badgeTabDaily" class="active" onclick="showBadgeTab('daily')">Daily</button>
+                    <button type="button" id="badgeTabWeekly" onclick="showBadgeTab('weekly')">Weekly</button>
+                    <button type="button" id="badgeTabLevels" onclick="showBadgeTab('levels')">Levels</button>
+                </div>
+
+                <!-- Daily: today so far, the last 7 days, and every badge earned -->
+
+                <div class="badge-pane" id="badgePaneDaily">
+                    <div class="today-badge">
+                        <span class="row-icon" id="todayBadgeIcon"><svg class="i"><use href="#i-shield"/></svg></span>
+                        <span class="row-text">
+                            <span class="row-title">Today</span>
+                            <span class="row-sub" id="todayBadgeText"></span>
+                        </span>
+                        <span class="risk-chip" id="todayBadgeChip"></span>
+                    </div>
+
+                    <div class="day-strip" id="dayStrip"></div>
+
+                    <div class="badge-totals">
+                        <div class="badge-total"><strong id="goodDaysTotal">0</strong><span>Good Days</span></div>
+                        <div class="badge-total"><strong id="goodWeeksTotal">0</strong><span>Good Weeks</span></div>
+                    </div>
+                </div>
+
+                <!-- Weekly: this week so far and the weeks already decided -->
+
+                <div class="badge-pane hidden" id="badgePaneWeekly">
+                    <div class="week-now">
+                        <div class="score-part-head"><strong>This Week</strong><span class="score-points" id="weekNowCount">0/5</span></div>
+                        <div class="score-bar small" aria-hidden="true"><i id="weekNowBar" style="--p:0"></i></div>
+                        <span class="sub" id="weekNowText"></span>
+                    </div>
+
+                    <div id="weekList" class="record-list"></div>
+                </div>
+
+                <!-- Levels: Beginner to Elite, from the Guardian Score -->
+
+                <div class="badge-pane hidden" id="badgePaneLevels">
+                    <p class="score-text" id="scoreBadgeEmpty">Your badge journey starts when you earn your first badge.</p>
+                    <div id="scoreBadges" class="record-list"></div>
+                </div>
+            </div>
+
+            </div>
+
+            <div class="tab-panel hidden" data-group="score" data-tab="improve">
+
+            <div class="card">
+                <h2>Improve Your Score</h2>
+                <div id="scoreTips" class="record-list"></div>
             </div>
 
             </div>

@@ -43,13 +43,15 @@ public class HeController {
     private final PaymentRepository payments;
     private final PaypalClient paypal;
     private final HomeExpenseService home;
+    private final GuardianScoreService score;
 
     public HeController(HePaymentRepository recorded, PaymentRepository payments, PaypalClient paypal,
-            HomeExpenseService home) {
+            HomeExpenseService home, GuardianScoreService score) {
         this.recorded = recorded;
         this.payments = payments;
         this.paypal = paypal;
         this.home = home;
+        this.score = score;
     }
 
     /** DAILY, MONTHLY or YEARLY, or null for anything else. */
@@ -204,6 +206,8 @@ public class HeController {
 
             if (bill != null) {
                 home.recordPaid(userId, bill.expenseId(), bill.due(), "MANUAL", "HE-" + saved.id);
+
+                score.refreshQuietly(userId);
             }
 
             return ResponseEntity.ok(row(saved));

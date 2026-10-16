@@ -36,8 +36,48 @@ const NOTIFICATION_ICONS = {
     PAYMENT_FAILED: '!',
     PAYOUT: '₹',
     REMINDER: '⏰',
-    ALERT: '🛡️'
+    ALERT: '🛡️',
+    SCORE_DAILY: '🛡️',
+    BADGE_EARNED: '🏅',
+    DAY_BADGE: '🛡️',
+    WEEK_BADGE: '🏆'
 };
+
+/* A short title for each kind of notification. */
+
+const NOTIFICATION_TITLES = {
+    PAYMENT_RECEIVED: 'Money received',
+    PAYMENT_SENT: 'Payment sent',
+    PAYMENT_FAILED: 'Payment not completed',
+    PAYOUT: 'Payout',
+    REMINDER: 'Reminder',
+    ALERT: 'Guardian alert',
+    SCORE_DAILY: 'Daily Guardian Update',
+    BADGE_EARNED: '🎉 New badge earned',
+    DAY_BADGE: '🎉 Good Day badge',
+    WEEK_BADGE: '🎉 Good Week badge'
+};
+
+/* Notifications that open the Guardian Score screen. */
+
+const SCORE_NOTIFICATIONS = ['SCORE_DAILY', 'BADGE_EARNED', 'DAY_BADGE', 'WEEK_BADGE'];
+
+/* Where each Guardian Score notification opens: the score itself, or its badges. */
+
+function openScoreFor(type) {
+    if (type === 'DAY_BADGE') {
+        openScore('badges', 'daily');
+
+    } else if (type === 'WEEK_BADGE') {
+        openScore('badges', 'weekly');
+
+    } else if (type === 'BADGE_EARNED') {
+        openScore('badges', 'levels');
+
+    } else {
+        openScore();
+    }
+}
 
 const PARENT_VIEW = {
     forecastView: 'homeView',
@@ -46,7 +86,8 @@ const PARENT_VIEW = {
     transactionView: 'homeView',
     guardianView: 'none',
     heView: 'none',
-    bankView: 'homeView'
+    bankView: 'homeView',
+    scoreView: 'homeView'
 };
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
@@ -64,6 +105,8 @@ let records = freshRecords();
 let payments = [];
 
 let currentView = 'homeView';
+let viewHistory = [];           /* the screens visited before this one, for Back */
+let goingBack = false;
 let payMethod = 'PHONE';
 let payee = null;
 let scannedName = '';
@@ -478,6 +521,10 @@ async function loadOverview() {
     }
 
     renderAwareness();
+
+    loadScore();
+
+    queueBand();
 }
 
 /* ==============================
@@ -704,6 +751,10 @@ async function openDashboard(profile) {
 }
 
 function closeDashboard(note) {
+    viewHistory = [];
+    guardianScore = null;
+    scoreZoneSent = false;
+
     if (me.email) {
         fetch('/api/auth/logout', { method: 'POST' }).catch(function() {
             /* The session also expires on its own. */
@@ -790,6 +841,14 @@ function navigateTo(viewId, action) {
         return;
     }
 
+    if (!goingBack && viewId !== currentView && $(currentView)) {
+        viewHistory.push(currentView);
+
+        if (viewHistory.length > 30) {
+            viewHistory.shift();
+        }
+    }
+
     if (currentView === 'paymentView' && viewId !== 'paymentView') {
         stopScan();
     }
@@ -824,9 +883,16 @@ function navigateTo(viewId, action) {
         panel.scrollTop = 0;
     });
 
-    if (viewId === 'paymentView') {
+    if (viewId === 'paymentView' && !goingBack) {
         showPayTab(action === 'receive' ? 'receive' : 'send');
     }
+
+    if (viewId === 'scoreView') {
+        renderScore();
+        loadScore();
+    }
+
+    queueBand();
 
     if (viewId === 'transactionView') {
         loadPayments();
@@ -879,6 +945,70 @@ document.querySelectorAll('#bottomNav button').forEach(button => {
     button.addEventListener('click', () => navigateTo(button.dataset.view));
 });
 
+/* The navy band reaches just below each screen's title and tabs; on Home, to the Safe to Spend figures. */
+
+function placeBand() {
+    const page = $('dashboardPage');
+    const view = $(currentView);
+
+    if (!page || !view || page.classList.contains('hidden')) {
+        return;
+    }
+
+    const top = page.getBoundingClientRect().top;
+    const stats = view.querySelector('.home-hero .hero-stats');
+
+    let bottom;
+
+    if (stats && stats.offsetParent) {
+        bottom = stats.getBoundingClientRect().top - 6;
+
+    } else {
+        const heads = [...view.querySelectorAll(':scope > .page-head, :scope > .subtabs, :scope > .seg')]
+            .filter(e => e.offsetParent);
+
+        const last = heads[heads.length - 1];
+
+        bottom = (last ? last.getBoundingClientRect().bottom : top + 110) + 18;
+    }
+
+    page.style.setProperty('--band', Math.max(90, Math.round(bottom - top)) + 'px');
+}
+
+function queueBand() {
+    requestAnimationFrame(placeBand);
+    setTimeout(placeBand, 320);
+}
+
+window.addEventListener('resize', queueBand);
+
+/*
+ * Back: the screen before this one, or Home when there is none. The screens stay as they were,
+ * with what was typed in them, and nothing is sent again: going back only changes the screen.
+ */
+
+function goBack() {
+    let target = 'homeView';
+
+    while (viewHistory.length) {
+        const previous = viewHistory.pop();
+
+        if (previous !== currentView && $(previous)) {
+            target = previous;
+            break;
+        }
+    }
+
+    goingBack = true;
+
+    try {
+        navigateTo(target);
+
+    } finally {
+        goingBack = false;
+    }
+}
+
 /* Tabs inside a screen: each screen shows one panel at a time, so nothing runs off the bottom. */
 
 function showSubtab(group, tab) {
@@ -898,6 +1028,8 @@ function showSubtab(group, tab) {
     if (group === 'he' && tab !== 'pay') {
         stopScan();
     }
+
+    queueBand();
 }
 
 document.querySelectorAll('.subtabs').forEach(bar => {
@@ -2712,6 +2844,69 @@ function setBell(unread) {
     badge.classList.toggle('hidden', !unread);
 }
 
+/* Unread notifications on each side of the notification screen. */
+
+let unreadMoney = 0;
+let unreadBadges = 0;
+
+function countUnread(data) {
+    unreadMoney = safeArray(data.items).filter(n => !n.seen).length;
+    unreadBadges = safeArray(data.scoreItems).filter(n => !n.seen).length;
+
+    [['notifCountMoney', unreadMoney], ['notifCountBadges', unreadBadges]].forEach(([id, count]) => {
+        $(id).textContent = count > 9 ? '9+' : String(count);
+        $(id).classList.toggle('hidden', !count);
+    });
+}
+
+/* The bell opens the side with something new: the badges when only they are new. */
+
+function openNotifications() {
+    navigateTo('notifView');
+    showSubtab('notif', unreadBadges > 0 && unreadMoney === 0 ? 'badges' : 'list');
+}
+
+function notificationRow(n) {
+    const row = makeElement('div', 'record-item notif-item' + (n.seen ? '' : ' unread'));
+
+    const left = makeElement('div', 'row');
+
+    left.appendChild(makeElement(
+        'span',
+        'icon-chip ' + (n.type === 'PAYMENT_RECEIVED' ? 'in' : (n.type === 'PAYMENT_FAILED' ? 'out' : '')),
+        NOTIFICATION_ICONS[n.type] || '↗'
+    ));
+
+    const text = makeElement('div');
+
+    if (NOTIFICATION_TITLES[n.type]) {
+        text.appendChild(makeElement('div', 'notif-title', NOTIFICATION_TITLES[n.type]));
+    }
+
+    text.appendChild(makeElement('strong', '', n.message));
+    text.appendChild(makeElement('div', 'sub', displayDateTime(n.createdAt)));
+
+    left.appendChild(text);
+
+    row.appendChild(left);
+
+    if (SCORE_NOTIFICATIONS.includes(n.type)) {
+        row.classList.add('clickable');
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+
+        row.addEventListener('click', () => openScoreFor(n.type));
+        row.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openScoreFor(n.type);
+            }
+        });
+    }
+
+    return row;
+}
+
 async function loadNotifications(markRead) {
     if (!me.email) {
         return;
@@ -2721,35 +2916,17 @@ async function loadNotifications(markRead) {
         const data = await apiJson('/api/notifications', {}, 10000);
 
         const items = safeArray(data.items);
+        const scoreItems = safeArray(data.scoreItems);
 
-        items.forEach(n => {
+        [...items, ...scoreItems].forEach(n => {
             maxSeenNotification = Math.max(maxSeenNotification, Number(n.id));
         });
 
         setBell(Number(data.unread) || 0);
+        countUnread(data);
 
-        renderRecords('notifList', items, 'No notifications yet.', n => {
-            const row = makeElement('div', 'record-item notif-item' + (n.seen ? '' : ' unread'));
-
-            const left = makeElement('div', 'row');
-
-            left.appendChild(makeElement(
-                'span',
-                'icon-chip ' + (n.type === 'PAYMENT_RECEIVED' ? 'in' : (n.type === 'PAYMENT_FAILED' ? 'out' : '')),
-                NOTIFICATION_ICONS[n.type] || '↗'
-            ));
-
-            const text = makeElement('div');
-
-            text.appendChild(makeElement('strong', '', n.message));
-            text.appendChild(makeElement('div', 'sub', displayDateTime(n.createdAt)));
-
-            left.appendChild(text);
-
-            row.appendChild(left);
-
-            return row;
-        });
+        renderRecords('notifList', items, 'No notifications yet.', notificationRow);
+        renderRecords('notifBadgeList', scoreItems, 'No badges yet.', notificationRow);
 
         if (markRead && Number(data.unread) > 0) {
             await postJson('/api/notifications/read', {}, 10000);
@@ -2772,18 +2949,29 @@ async function pollNotifications() {
     try {
         const data = await apiJson('/api/notifications', {}, 10000);
 
-        const fresh = safeArray(data.items)
-            .filter(n => Number(n.id) > maxSeenNotification && !n.seen)
-            .reverse();
+        const all = [...safeArray(data.items), ...safeArray(data.scoreItems)];
 
-        safeArray(data.items).forEach(n => {
+        const fresh = all
+            .filter(n => Number(n.id) > maxSeenNotification && !n.seen)
+            .sort((a, b) => Number(a.id) - Number(b.id));
+
+        all.forEach(n => {
             maxSeenNotification = Math.max(maxSeenNotification, Number(n.id));
         });
 
         setBell(Number(data.unread) || 0);
+        countUnread(data);
 
         if (fresh.length) {
-            showToast('🔔 ' + fresh[fresh.length - 1].message, 7000);
+            const latest = fresh[fresh.length - 1];
+
+            showToast('🔔 ' + (NOTIFICATION_TITLES[latest.type] ? NOTIFICATION_TITLES[latest.type] + ': ' : '') + latest.message, 7000);
+
+            fresh.forEach(showOnDevice);
+
+            if (fresh.some(n => SCORE_NOTIFICATIONS.includes(n.type))) {
+                loadScore();
+            }
 
             if (currentView === 'notifView') {
                 loadNotifications(true);
@@ -3860,9 +4048,14 @@ function renderAwareness() {
 
         setChip('awareGoalsChip', behind ? 'Behind' : goal.percent + '%', behind ? 'HIGH' : 'LOW');
 
-        $('awareGoalsMain').textContent = goal.percent + '%';
-        $('awareGoalsMain').className = 'aware-main gold';
-        $('awareGoalsSub').textContent = goal.name;
+        const count = safeArray(o.goals).length;
+        const by = goal.targetDate
+            ? ' by ' + new Date(goal.targetDate + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short' })
+            : '';
+
+        $('awareGoalsMain').textContent = count + (count === 1 ? ' goal • ' : ' goals • ') + shortMoney(goal.target) + by;
+        $('awareGoalsMain').className = 'aware-main';
+        $('awareGoalsSub').textContent = '';
 
     } else {
         const any = safeArray(o.goals).length > 0;
@@ -3973,7 +4166,7 @@ function updateTiles() {
 
     $('tileFraud').textContent = flagged ? flagged + ' flagged' : 'Secure';
     $('tileFraud').className = 'tile-status ' + (flagged ? 'warn' : 'good');
-    $('tileFraudIcon').className = 'tile-icon ' + (flagged ? 'warn' : 'ok');
+    $('tileFraudIcon').className = 'row-icon ' + (flagged ? 'warn' : 'ok');
 }
 
 /* Spending Forecast tile: what was spent each day over the last 14 days, as one line. */
@@ -4005,7 +4198,19 @@ function renderSpark() {
     line.setAttribute('points', points.join(' '));
     line.setAttribute('class', 'spark-line');
 
-    $('tileSpark').replaceChildren(area, line);
+    const dots = points.filter((_, i) => i % 2 === 1).map(p => {
+        const [x, y] = p.split(',');
+        const dot = document.createElementNS(ns, 'circle');
+
+        dot.setAttribute('cx', x);
+        dot.setAttribute('cy', y);
+        dot.setAttribute('r', '3.2');
+        dot.setAttribute('class', 'spark-dot');
+
+        return dot;
+    });
+
+    $('tileSpark').replaceChildren(area, line, ...dots);
 }
 
 function renderWeekBars() {
@@ -5495,6 +5700,96 @@ function renderNotifySettings() {
     $('notifyDaily').checked = choices.daily !== false;
     $('notifyLoans').checked = choices.loans !== false;
     $('notifySavings').checked = choices.savings !== false;
+    $('notifyScoreDaily').checked = choices.scoreDaily !== false;
+    $('notifyBadges').checked = choices.badges !== false;
+    $('notifyDevice').checked = deviceNotifications();
+}
+
+[['notifyScoreDaily', 'scoreDaily', 'Daily Guardian updates are'], ['notifyBadges', 'badges', 'Badge notifications are']].forEach(([id, key, label]) => {
+    $(id).addEventListener('change', function() {
+        records.profile.notify[key] = this.checked;
+
+        saveRecords();
+
+        showToast(label + (this.checked ? ' on.' : ' off.'));
+    });
+});
+
+/*
+ * Notifications on this device: the browser shows them while Monetra is open, if the user allows it.
+ * There is no push service, so nothing arrives while Monetra is closed. The choice is kept on this
+ * device only.
+ */
+
+const DEVICE_NOTIFY_KEY = 'monetraDeviceNotifications';
+
+function deviceNotifications() {
+    try {
+        return 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem(DEVICE_NOTIFY_KEY) === 'on';
+
+    } catch (error) {
+        return false;
+    }
+}
+
+$('notifyDevice').addEventListener('change', async function() {
+    const box = this;
+
+    if (!box.checked) {
+        try {
+            localStorage.removeItem(DEVICE_NOTIFY_KEY);
+        } catch (error) {
+            /* Storage unavailable. */
+        }
+
+        showToast('Device notifications are off.');
+        return;
+    }
+
+    if (!('Notification' in window)) {
+        box.checked = false;
+        showToast('This browser cannot show notifications.');
+        return;
+    }
+
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+
+    if (permission !== 'granted') {
+        box.checked = false;
+        showToast('Notifications are blocked for Monetra in this browser.');
+        return;
+    }
+
+    try {
+        localStorage.setItem(DEVICE_NOTIFY_KEY, 'on');
+    } catch (error) {
+        /* Storage unavailable: it stays on until the page is reloaded. */
+    }
+
+    showToast('Device notifications are on while Monetra is open.');
+});
+
+function showOnDevice(n) {
+    if (!deviceNotifications()) {
+        return;
+    }
+
+    try {
+        const shown = new Notification(NOTIFICATION_TITLES[n.type] || 'Monetra', { body: n.message, tag: 'monetra-' + n.id });
+
+        shown.onclick = () => {
+            window.focus();
+
+            if (SCORE_NOTIFICATIONS.includes(n.type)) {
+                openScoreFor(n.type);
+            }
+
+            shown.close();
+        };
+
+    } catch (error) {
+        /* Some browsers only allow notifications from a service worker; the in-app list still has it. */
+    }
 }
 
 ['Daily', 'Loans', 'Savings'].forEach(name => {
@@ -5506,6 +5801,299 @@ function renderNotifySettings() {
         showToast(name + ' notifications are ' + (this.checked ? 'on.' : 'off.'));
     });
 });
+
+/* ==============================
+   GUARDIAN SCORE
+   Worked out by the server from the user's own records. The page only shows it:
+   it never sends a score or a badge back.
+================================ */
+
+let guardianScore = null;
+let scoreSort = 'high';
+let scoreZoneSent = false;
+
+const BADGE_STATUS = {
+    CURRENT: ['Current', 'current'],
+    EARNED: ['Previously Earned', 'earned'],
+    NOT_EARNED: ['Not Yet Earned', 'not-earned']
+};
+
+/* The first load after signing in also tells the server the user's own time zone, for the daily update. */
+
+async function loadScore() {
+    if (!me.email) {
+        return;
+    }
+
+    let zone = '';
+
+    try {
+        zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch (error) {
+        zone = '';
+    }
+
+    try {
+        if (!scoreZoneSent && zone) {
+            try {
+                guardianScore = await postJson('/api/guardian/score/refresh', { timezone: zone }, 15000);
+            } catch (error) {
+                guardianScore = await apiJson('/api/guardian/score', {}, 15000);
+            }
+
+            scoreZoneSent = true;
+
+        } else {
+            guardianScore = await apiJson('/api/guardian/score', {}, 15000);
+        }
+
+    } catch (error) {
+        return;     /* the last score stays on screen */
+    }
+
+    renderScoreButton();
+
+    if (currentView === 'scoreView') {
+        renderScore();
+    }
+}
+
+function renderScoreButton() {
+    const s = guardianScore;
+    const known = !!(s && s.available);
+
+    $('scoreButtonValue').textContent = known ? s.score + '/100' : '—';
+    $('scoreButton').classList.toggle('unknown', !known);
+}
+
+function openScore(tab, badgeTab) {
+    navigateTo('scoreView');
+    showSubtab('score', typeof tab === 'string' ? tab : 'overall');
+
+    if (badgeTab) {
+        showBadgeTab(badgeTab);
+    }
+}
+
+/* The Badges tab: Daily, Weekly or Levels. */
+
+function showBadgeTab(tab) {
+    [['daily', 'badgeTabDaily', 'badgePaneDaily'],
+     ['weekly', 'badgeTabWeekly', 'badgePaneWeekly'],
+     ['levels', 'badgeTabLevels', 'badgePaneLevels']].forEach(([name, button, pane]) => {
+        $(button).classList.toggle('active', name === tab);
+        $(pane).classList.toggle('hidden', name !== tab);
+    });
+}
+
+function sortScore(order) {
+    scoreSort = order === 'low' ? 'low' : 'high';
+
+    renderScoreParts();
+}
+
+function renderScore() {
+    const s = guardianScore;
+    const known = !!(s && s.available);
+
+    /* The shield: the score big, and out of 100 under it. */
+
+    $('scoreValue').textContent = known ? s.score : '—';
+    $('scoreOutOf').textContent = (known ? s.score : '—') + '/100';
+
+    /* Only when there is no score: what to add to get one. */
+
+    $('scoreConfidenceText').textContent = s && !known ? s.confidenceText || '' : '';
+
+    renderScoreParts();
+    renderScoreBadges();
+    renderDayBadges();
+    renderWeekBadges();
+    renderScoreTips();
+}
+
+function renderScoreParts() {
+    const s = guardianScore;
+
+    $('scoreSortHigh').classList.toggle('active', scoreSort === 'high');
+    $('scoreSortLow').classList.toggle('active', scoreSort === 'low');
+
+    const parts = safeArray(s && s.categories);
+    const order = safeArray(s && s.order && s.order[scoreSort]);
+
+    /* The server worked out the order; the page only follows it. */
+
+    const sorted = order.length
+        ? order.map(id => parts.find(p => p.id === id)).filter(Boolean)
+        : parts;
+
+    renderRecords('scoreParts', sorted, s && !s.available ? s.confidenceText : 'Loading...', p => {
+        const item = makeElement('div', 'record-item score-part');
+
+        const head = makeElement('div', 'score-part-head');
+
+        head.appendChild(makeElement('strong', '', p.name));
+        head.appendChild(makeElement('span', 'score-points', p.earned + '/' + p.max));
+
+        item.appendChild(head);
+
+        const bar = makeElement('div', 'score-bar small');
+        const fill = document.createElement('i');
+
+        fill.style.setProperty('--p', p.percent);
+        bar.appendChild(fill);
+        item.appendChild(bar);
+
+        /* One line: what to do, or else why. */
+
+        item.appendChild(p.advice
+            ? makeElement('div', 'score-advice', p.advice)
+            : makeElement('div', 'sub', p.explanation));
+
+        return item;
+    });
+}
+
+function renderScoreBadges() {
+    const s = guardianScore;
+
+    $('scoreBadgeEmpty').classList.toggle('hidden', !!(s && s.anyBadge));
+
+    renderRecords('scoreBadges', safeArray(s && s.badges), '', b => {
+        const status = BADGE_STATUS[b.status] || BADGE_STATUS.NOT_EARNED;
+        const item = makeElement('div', 'record-item badge-row ' + status[1]);
+
+        const left = makeElement('div');
+
+        left.appendChild(makeElement('strong', '', '🏅 ' + b.badge));
+        left.appendChild(makeElement('div', 'sub', b.earnedAt
+            ? displayDateTime(b.earnedAt) + ' • score ' + b.scoreWhenEarned + '/100'
+            : b.min + '–' + b.max + ' points'));
+
+        item.appendChild(left);
+        item.appendChild(makeElement('span', 'badge-status', status[0]));
+
+        return item;
+    });
+}
+
+/* "Mon 13 Oct" from "2026-10-13". */
+
+function shortDay(iso) {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+const DAY_STATUS = {
+    EARNED: ['earned', 'Good Day badge'],
+    MISSED: ['missed', 'Over the limit'],
+    TODAY_ON_TRACK: ['today', 'On track'],
+    TODAY_OVER: ['today over', 'Over the limit'],
+    NONE: ['none', 'Not checked']
+};
+
+/* Daily: today so far, the last 7 days as a strip, and the totals. */
+
+function renderDayBadges() {
+    const p = guardianScore && guardianScore.periods;
+
+    const limitSet = !!(p && p.limitSet);
+    const onTrack = !!(p && p.todayOnTrack);
+
+    $('todayBadgeText').textContent = limitSet
+        ? money(p.spentToday) + ' of ' + money(p.limit)
+        : 'Set a daily limit in Spending';
+
+    $('todayBadgeChip').textContent = limitSet ? (onTrack ? 'On track' : 'Over limit') : '';
+    $('todayBadgeChip').className = 'risk-chip ' + (onTrack ? 'low' : 'high') + (limitSet ? '' : ' hidden');
+    $('todayBadgeIcon').className = 'row-icon' + (limitSet && !onTrack ? ' warn' : '');
+
+    const strip = $('dayStrip');
+
+    strip.replaceChildren(...safeArray(p && p.days).map(d => {
+        const status = DAY_STATUS[d.status] || DAY_STATUS.NONE;
+        const isToday = d.status && d.status.startsWith('TODAY');
+        const date = new Date(d.date + 'T00:00:00');
+
+        const cell = makeElement('div', 'day-cell ' + status[0]);
+
+        cell.title = shortDay(d.date) + ': ' + status[1] + (d.spent != null ? ', ' + money(d.spent) + ' spent' : '');
+
+        cell.appendChild(makeElement('span', 'day-name', isToday ? 'Today' : date.toLocaleDateString('en-IN', { weekday: 'short' })));
+
+        const dot = makeElement('span', 'day-dot');
+
+        if (d.status === 'EARNED' || isToday) {
+            dot.innerHTML = '<svg class="i"><use href="#i-shield"/></svg>';
+
+        } else {
+            dot.textContent = d.status === 'MISSED' ? '✕' : '–';
+        }
+
+        cell.appendChild(dot);
+        cell.appendChild(makeElement('span', 'day-date', String(date.getDate())));
+        /* What was spent that day, short: ₹180, ₹1.2k. */
+        const spent = Number(d.spent);
+
+        cell.appendChild(makeElement('span', 'day-spent',
+            d.spent == null ? '' : spent < 1000 ? '₹' + Math.round(spent) : shortMoney(spent)));
+
+        return cell;
+    }));
+
+    $('goodDaysTotal').textContent = p ? String(p.goodDaysTotal || 0) : '0';
+    $('goodWeeksTotal').textContent = p ? String(p.goodWeeksTotal || 0) : '0';
+}
+
+/* Weekly: this week so far, and each week already decided. */
+
+function renderWeekBadges() {
+    const p = guardianScore && guardianScore.periods;
+
+    const good = p ? Number(p.weekGoodDays) || 0 : 0;
+    const needed = p ? Number(p.weekNeeded) || 5 : 5;
+    const left = p ? Number(p.weekDaysLeft) || 0 : 0;
+
+    $('weekNowCount').textContent = good + '/' + needed;
+    $('weekNowBar').style.setProperty('--p', Math.min(100, Math.round(good / needed * 100)));
+
+    $('weekNowText').textContent = !(p && p.limitSet)
+        ? 'Set a daily limit in Spending'
+        : good >= needed
+            ? 'Badge on Monday'
+            : good + left >= needed
+                ? left + (left === 1 ? ' day left' : ' days left')
+                : 'Not possible this week';
+
+    renderRecords('weekList', safeArray(p && p.weeks), 'Your first week is checked on Monday.', w => {
+        const item = makeElement('div', 'record-item badge-row ' + (w.earned ? 'earned' : 'not-earned'));
+        const left = makeElement('div');
+
+        left.appendChild(makeElement('strong', '', (w.earned ? '🏆 ' : '') + shortDay(w.start) + ' – ' + shortDay(w.end)));
+        left.appendChild(makeElement('div', 'sub', w.goodDays + ' of 7 Good Days'));
+
+        item.appendChild(left);
+        item.appendChild(makeElement('span', 'badge-status', w.earned ? 'Good Week' : 'Missed'));
+
+        return item;
+    });
+}
+
+function renderScoreTips() {
+    const s = guardianScore;
+
+    renderRecords('scoreTips', safeArray(s && s.tips),
+        s && !s.available ? s.confidenceText : 'Nothing to improve right now. 🎉', t => {
+            const item = makeElement('div', 'record-item score-tip');
+
+            item.appendChild(makeElement('span', '', t.text));
+
+            if (t.gain) {
+                item.appendChild(makeElement('span', 'gain-chip', '≈ +' + t.gain + ' points'));
+            }
+
+            return item;
+        });
+}
 
 /* ==============================
    INITIAL PAGE
@@ -5582,6 +6170,22 @@ function openMyMoney() {
     showSubtab('spending', 'money');
 }
 
+/* ₹20k, ₹1.5L: short amounts for the Home rows. */
+
+function shortMoney(value) {
+    const n = Number(value) || 0;
+
+    if (n >= 100000) {
+        return '₹' + (Math.round(n / 10000) / 10) + 'L';
+    }
+
+    if (n >= 1000) {
+        return '₹' + (Math.round(n / 100) / 10) + 'k';
+    }
+
+    return money(n);
+}
+
 function renderSafeToSpend() {
     const s = overview && overview.safeToSpend;
     const amount = $('safeAmount');
@@ -5592,7 +6196,8 @@ function renderSafeToSpend() {
 
         $('safeBalance').textContent = '—';
         $('safeProtected').textContent = '—';
-        $('safeText').textContent = s && s.text ? s.text : 'Add your balance and income day in Spending, under My money.';
+        $('safeAvail').classList.add('hidden');
+        $('safeText').textContent = s && s.text ? s.text : 'Tap to add your balance and income day.';
         return;
     }
 
@@ -5601,6 +6206,15 @@ function renderSafeToSpend() {
 
     $('safeBalance').textContent = money(s.balance);
     $('safeProtected').textContent = money(s.protected);
+
+    /* The share of today's safe money that is still unspent. */
+
+    const perDay = Number(s.perDay);
+    const left = perDay > 0 ? Math.max(0, Math.min(100, Math.round(Number(s.amount) / perDay * 100))) : 0;
+
+    $('safeMeter').style.setProperty('--p', left);
+    $('safePercent').textContent = left + '%';
+    $('safeAvail').classList.toggle('hidden', !(perDay > 0));
 
     /* Only a warning is written out; otherwise the three figures say it all. */
 
@@ -6404,7 +7018,7 @@ $('bankAccountSelect').addEventListener('change', function() {
 
 $('bankRefresh').addEventListener('click', () => checkBankBalance(true));
 
-$('bankBack').addEventListener('click', () => navigateTo('homeView'));
+$('bankBack').addEventListener('click', goBack);
 
 $('bankPrimary').addEventListener('click', async function() {
     try {

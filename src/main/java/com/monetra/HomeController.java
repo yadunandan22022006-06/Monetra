@@ -25,9 +25,11 @@ import java.util.Map;
 public class HomeController {
 
     private final HomeExpenseService home;
+    private final GuardianScoreService score;
 
-    public HomeController(HomeExpenseService home) {
+    public HomeController(HomeExpenseService home, GuardianScoreService score) {
         this.home = home;
+        this.score = score;
     }
 
     /** Everything the Home Expense screen needs in one call. */
@@ -111,9 +113,13 @@ public class HomeController {
             return ResponseEntity.badRequest().body(Map.of("error", "Choose a valid due date."));
         }
 
-        return home.recordPaid(userId, id, due, "MANUAL", null)
-                ? ResponseEntity.ok(Map.of("paid", true, "source", "MANUAL"))
-                : ResponseEntity.badRequest().body(Map.of("error", "That is not a due date of this expense."));
+        if (!home.recordPaid(userId, id, due, "MANUAL", null)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "That is not a due date of this expense."));
+        }
+
+        score.refreshQuietly(userId);
+
+        return ResponseEntity.ok(Map.of("paid", true, "source", "MANUAL"));
     }
 
     @DeleteMapping("/expenses/{id}/paid")
@@ -129,10 +135,13 @@ public class HomeController {
         }
 
         try {
-            return home.unmarkPaid(userId, id, LocalDate.parse(dueDate))
-                    ? ResponseEntity.ok(Map.of("unmarked", true))
-                    : ResponseEntity.badRequest().body(Map.of("error",
-                            "Only a payment you marked yourself can be undone."));
+            if (!home.unmarkPaid(userId, id, LocalDate.parse(dueDate))) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Only a payment you marked yourself can be undone."));
+            }
+
+            score.refreshQuietly(userId);
+
+            return ResponseEntity.ok(Map.of("unmarked", true));
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Choose a valid due date."));

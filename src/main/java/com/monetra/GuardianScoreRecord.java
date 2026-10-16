@@ -14,7 +14,7 @@ import java.time.LocalDate;
 /** One user's Guardian Score for one day: the latest one worked out that day, never more than one row. */
 @Entity
 @Table(name = "guardian_score_history",
-        uniqueConstraints = @UniqueConstraint(name = "uq_score_history_day", columnNames = {"userId", "day"}))
+        uniqueConstraints = @UniqueConstraint(name = "uq_score_history_day", columnNames = {"userId", "score_day"}))
 public class GuardianScoreRecord {
 
     @Id
@@ -24,7 +24,8 @@ public class GuardianScoreRecord {
     @Column(nullable = false)
     public Long userId;
 
-    @Column(nullable = false)
+    /** "day" is a reserved word in the database, so the column has its own name. */
+    @Column(name = "score_day", nullable = false)
     public LocalDate day;
 
     @Column(nullable = false)

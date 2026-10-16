@@ -32,12 +32,15 @@ public class DataController {
     private final UserDataRepository store;
     private final GuardianAnalysisService guardian;
     private final RecipientResolver recipients;
+    private final GuardianScoreService score;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public DataController(UserDataRepository store, GuardianAnalysisService guardian, RecipientResolver recipients) {
+    public DataController(UserDataRepository store, GuardianAnalysisService guardian, RecipientResolver recipients,
+            GuardianScoreService score) {
         this.store = store;
         this.guardian = guardian;
         this.recipients = recipients;
+        this.score = score;
     }
 
     @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -90,6 +93,9 @@ public class DataController {
             row.setJson(body);
             store.save(row);
         }
+
+        /* Limits, loans, goals and the balance feed the Guardian Score. */
+        score.refreshQuietly(userId);
 
         return ResponseEntity.ok(Map.of("saved", true));
     }

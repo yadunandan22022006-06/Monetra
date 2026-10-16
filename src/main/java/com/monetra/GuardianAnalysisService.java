@@ -902,7 +902,7 @@ public class GuardianAnalysisService {
 
         if (pos.balance() == null) {
             out.put("known", false);
-            out.put("text", "Add your balance and income day in Spending, under My money.");
+            out.put("text", "Tap to add your balance and income day.");
             return out;
         }
 
@@ -1023,8 +1023,11 @@ public class GuardianAnalysisService {
         return notify(userId, key, "REMINDER", message);
     }
 
-    /** Saves a notification unless one with the same key was already sent to this user. */
-    private int notify(Long userId, String key, String type, String message) {
+    /**
+     * Saves a notification unless one with the same key was already sent to this user. The Guardian
+     * Score uses it too, for its daily update and its new-badge notifications.
+     */
+    int notify(Long userId, String key, String type, String message) {
         String alertKey = key.length() > 80 ? key.substring(0, 80) : key;
 
         if (alerts.existsByUserIdAndAlertKey(userId, alertKey)) {

@@ -20,15 +20,18 @@ public class NotificationController {
     private final NotificationRepository notifications;
     private final HomeExpenseService home;
     private final GuardianAnalysisService guardian;
+    private final GuardianScoreService score;
 
     public NotificationController(
             NotificationRepository notifications,
             HomeExpenseService home,
-            GuardianAnalysisService guardian) {
+            GuardianAnalysisService guardian,
+            GuardianScoreService score) {
 
         this.notifications = notifications;
         this.home = home;
         this.guardian = guardian;
+        this.score = score;
     }
 
     @GetMapping
@@ -55,9 +58,19 @@ public class NotificationController {
             /* Never break the notification list because of them. */
         }
 
+        /* Today's Guardian Score update, once a day; the background job also creates it. */
+        try {
+            score.sendDailyIfDue(userId, java.time.Instant.now());
+
+        } catch (RuntimeException e) {
+            /* Never break the notification list because of it. */
+        }
+
+        /* Two sides: payments and alerts in "items", the Guardian Score and its badges in "scoreItems". */
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("unread", notifications.countByUserIdAndSeenFalse(userId));
-        out.put("items", notifications.findTop30ByUserIdOrderByCreatedAtDesc(userId));
+        out.put("items", notifications.findTop30ByUserIdAndTypeNotInOrderByCreatedAtDesc(userId, GuardianScoreService.NOTIFICATION_TYPES));
+        out.put("scoreItems", notifications.findTop30ByUserIdAndTypeInOrderByCreatedAtDesc(userId, GuardianScoreService.NOTIFICATION_TYPES));
         return ResponseEntity.ok(out);
     }
 
