@@ -86,6 +86,14 @@ export AI_API_KEY=<your free key from https://aistudio.google.com/apikey>
 
 Open <http://localhost:8081>.
 
+**Keeping your keys private (`.env`).** Keys never go in the code or in any uploaded file. Monetra reads them from environment variables, and on a Windows computer a private file called `.env` fills them in:
+
+1. Copy `.env.example` to a new file named `.env` in the project folder (next to `pom.xml`).
+2. Fill in the values you have (PayPal, Setu, Groq, Claude). An empty value just switches that feature off, and Monetra says so.
+3. Start with `powershell -ExecutionPolicy Bypass -File .\start-local.ps1`. It reads `.env`, never prints a value, and never replaces a value you already set in the terminal. Add `-CheckOnly` to see which keys were found (names only) without starting Monetra.
+
+`.env` is listed in `.gitignore`, so it is never uploaded. `.env.example` holds no real values and is safe to share. `start-local.ps1` is a local helper kept out of Git; on other systems export the same names as environment variables, as shown above. On Render, set the same names in the dashboard (`render.yaml` lists them). If a key was ever shown or uploaded, create a new one at the provider and put the new one in `.env`.
+
 Only **one copy** can run at a time: the database file is locked, and a second copy stops with "Database may be already in use". Stop the first one with Ctrl-C (it shuts down cleanly), then start again.
 
 **Demo accounts** (created only when `MONETRA_SEED_DEMO_USERS=true`):
@@ -113,7 +121,7 @@ Without PayPal credentials everything except the final PayPal step still works. 
 1. Sign in at <https://developer.paypal.com/> and open **Apps & Credentials** (Sandbox).
 2. **Create App** (type Merchant). Copy the **Client ID** and **Secret**. In the app's **Features**, tick **Payouts**.
 3. Under **Testing Tools → Sandbox Accounts**, open the **Personal** account to get a test buyer email and password. You use it on the PayPal page when you pay. A receiver adds their own Sandbox personal email in *Monetra Guardian → AI & Payments → Get paid to your PayPal account*.
-4. Set `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` as environment variables. **Never commit them.**
+4. Set `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` as environment variables (on Windows, put them in `.env`: see "Keeping your keys private" above). **Never commit them.**
 5. **Webhooks (optional but recommended):** in the dashboard create a webhook for your app with the URL `https://YOUR-SERVER/api/paypal/webhook` and the events `PAYMENT.CAPTURE.COMPLETED` and `PAYMENT.PAYOUTS-ITEM.*`. Copy its **Webhook ID** into `PAYPAL_WEBHOOK_ID`. PayPal can only reach a public address, so use the Render deployment (or a tunnel) for this. Without it the webhook endpoint answers 503, and the "Check with PayPal" button still recovers a payment.
 
 ## How PayPal and AI are used
@@ -144,7 +152,7 @@ Monetra's AI works with any provider that speaks the common "OpenAI chat" format
 | Option | Cost | Set these |
 |---|---|---|
 | **Google Gemini** (free tier, key from [Google AI Studio](https://aistudio.google.com/apikey)) | Free tier with rate limits | `AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `AI_MODEL=<a current Gemini flash model id>`, `AI_API_KEY=<your key>` |
-| **Groq** (recommended online option: free tier, key from [console.groq.com](https://console.groq.com)) | Free tier with rate limits | `AI_BASE_URL=https://api.groq.com/openai/v1`, `AI_MODEL=openai/gpt-oss-120b` (or `openai/gpt-oss-20b`; `llama-3.3-70b-versatile` was retired in August 2026), `AI_API_KEY=<your key>`. In `start-local.ps1`, just paste the key into `$groqKey`. `render.yaml` already sets the address and model, so on Render only `AI_API_KEY` is needed. |
+| **Groq** (recommended online option: free tier, key from [console.groq.com](https://console.groq.com)) | Free tier with rate limits | `AI_BASE_URL=https://api.groq.com/openai/v1`, `AI_MODEL=openai/gpt-oss-120b` (or `openai/gpt-oss-20b`; `llama-3.3-70b-versatile` was retired in August 2026), `AI_API_KEY=<your key>`. On Windows, just put the key in `.env` as `GROQ_API_KEY`: `start-local.ps1` turns it into these three variables. `render.yaml` already sets the address and model, so on Render only `AI_API_KEY` is needed. |
 | **Ollama** (runs on your own computer, [ollama.com](https://ollama.com)) | Free and unlimited, no key, works offline | install Ollama, run `ollama pull llama3.2`, then `AI_BASE_URL=http://localhost:11434/v1`, `AI_MODEL=llama3.2` |
 
 Windows PowerShell example:
@@ -222,6 +230,7 @@ The H2 file database lives on the container disk, so **data resets when the serv
 | `SETU_AA_BASE_URL` | Optional. `https://fiu-sandbox.setu.co` (the default) or Setu's production gateway |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` | A FREE AI (Gemini, Groq, Ollama): see "Free AI" (optional) |
 | `AI_FALLBACK_BASE_URL`, `AI_FALLBACK_MODEL` | An AI on this computer (Ollama) that answers only when the online AI cannot be reached. `start-local.ps1` sets them when Ollama is installed (optional) |
+| `GROQ_API_KEY` | Read only by `start-local.ps1` (from `.env`): it sets `AI_BASE_URL`, `AI_MODEL` and `AI_API_KEY` for Groq. Not a Spring setting |
 | `ANTHROPIC_API_KEY` | Claude instead (paid, optional) |
 | `AI_PROVIDER` | `openai` or `anthropic` to force one (empty chooses automatically) |
 | `MONETRA_SEED_DEMO_USERS` | `true` creates the demo accounts |

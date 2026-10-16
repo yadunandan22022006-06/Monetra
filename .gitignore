@@ -41,6 +41,8 @@ start-local.ps1
 ### Never commit private or local files
 .env
 .env.*
+!.env.example
+*.bak
 *.log
 logs/
 *.mv.db

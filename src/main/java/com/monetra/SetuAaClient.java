@@ -64,7 +64,7 @@ public class SetuAaClient {
         return missing().isEmpty();
     }
 
-    /** The settings that still have to be filled in, by the names the start script uses. */
+    /** The settings that still have to be filled in, by the names used in the private .env file. */
     public List<String> missing() {
         List<String> out = new ArrayList<>();
 

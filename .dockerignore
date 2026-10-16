@@ -3,3 +3,7 @@ data/
 .git/
 .vscode/
 .idea/
+.env
+.env.*
+start-local.ps1
+*.bak

@@ -579,7 +579,7 @@ public class BankService {
     private void requireConfigured() {
         if (!setu.configured()) {
             throw new BankProblem(503, "Linking a bank account is not set up on this server yet. It needs Setu Account "
-                    + "Aggregator keys in the start script: " + String.join(", ", setu.missing()) + ".");
+                    + "Aggregator keys in the private .env file: " + String.join(", ", setu.missing()) + ".");
         }
     }
 
