@@ -208,6 +208,13 @@ public class PaymentController {
         }
 
         String description = RecipientResolver.text(body.get("description"), 100);
+        /* A method that is not one of ours is refused, not quietly treated as a phone payment. */
+        String asked = RecipientResolver.text(body.get("method"), 12).toUpperCase();
+
+        if (!asked.isEmpty() && !List.of("PHONE", "QR", "BANK").contains(asked)) {
+            return error(HttpStatus.BAD_REQUEST, "That payment method is not supported.");
+        }
+
         String method = RecipientResolver.method(body.get("method"));
 
         /* Does this payment settle a household expense? */

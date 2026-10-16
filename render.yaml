@@ -32,3 +32,9 @@ services:
       # Creates the two demo accounts so judges can log in without email OTP.
       - key: MONETRA_SEED_DEMO_USERS
         value: "true"
+      # The password the two demo accounts use online. Choose your own and give it to the judges (Devpost testing instructions).
+      - key: MONETRA_DEMO_PASSWORD
+        sync: false
+      # Render serves the site over https, so the login cookie is marked secure.
+      - key: MONETRA_COOKIE_SECURE
+        value: "true"

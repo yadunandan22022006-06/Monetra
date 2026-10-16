@@ -7,7 +7,6 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -241,7 +240,7 @@ public class PaymentService {
     }
 
     public static String rupees(BigDecimal value) {
-        return "₹" + (value == null ? "0.00" : value.setScale(2, RoundingMode.HALF_UP).toPlainString());
+        return Inr.of(value);
     }
 
     /** Used by tests. */

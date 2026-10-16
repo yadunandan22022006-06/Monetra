@@ -350,8 +350,11 @@ public final class BudgetRules {
         int elapsed = today.getDayOfMonth();
         int daysInMonth = today.lengthOfMonth();
 
+        /* The average is shown to two places, but the projection is worked out from the exact sum, so a rounded
+           average never adds up to ₹0.15 of error: spent x days in the month / days so far. */
         BigDecimal avgDaily = spentMonth.divide(BigDecimal.valueOf(elapsed), 2, RoundingMode.HALF_UP);
-        BigDecimal projected = avgDaily.multiply(BigDecimal.valueOf(daysInMonth));
+        BigDecimal projected = spentMonth.multiply(BigDecimal.valueOf(daysInMonth))
+                .divide(BigDecimal.valueOf(elapsed), 2, RoundingMode.HALF_UP);
         BigDecimal limit = limit(safe, "monthly");
 
         String status;
@@ -368,11 +371,14 @@ public final class BudgetRules {
 
         Object runOutDay = null;
 
-        if (limit.signum() > 0 && avgDaily.signum() > 0) {
-            BigDecimal days = limit.divide(avgDaily, 0, RoundingMode.FLOOR);
+        if (limit.signum() > 0 && spentMonth.signum() > 0) {
+            /* The day the limit would run out: limit / (spent per day), from the exact sum. */
+            BigDecimal days = limit.multiply(BigDecimal.valueOf(elapsed)).divide(spentMonth, 0, RoundingMode.FLOOR);
 
             if (days.compareTo(BigDecimal.valueOf(daysInMonth)) <= 0) {
-                runOutDay = days.intValue();
+                /* Spending faster than the whole limit a day means it ran out on the first day, never "day 0"
+                   (the page reads 0 as "not this month"). */
+                runOutDay = Math.max(1, days.intValue());
             }
         }
 

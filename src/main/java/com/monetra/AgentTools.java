@@ -199,8 +199,8 @@ public class AgentTools {
         }
 
         if (leftAfter != null && leftAfter.signum() < 0) {
-            reasons.add("After upcoming household expenses and EMIs, your recorded balance would be short by ₹"
-                    + leftAfter.abs().setScale(2, RoundingMode.HALF_UP).toPlainString() + ".");
+            reasons.add("After upcoming household expenses and EMIs, your recorded balance would be short by "
+                    + Inr.of(leftAfter.abs()) + ".");
         }
 
         if (Boolean.TRUE.equals(budget.get("emiAtRisk"))) {

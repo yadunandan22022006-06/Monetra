@@ -99,6 +99,48 @@ class BudgetRulesTest {
 	}
 
 	@Test
+	void theProjectionUsesTheExactSumNotTheRoundedDailyAverage() throws Exception {
+		/* 1200.50 spent in 16 days of a 31-day month: exactly 2325.96875, so 2325.97. The shown average
+		   is 75.03; using it would have given 2325.93. */
+		JsonNode d = data("{\"limits\":{\"monthly\":20000},\"expenses\":[{\"amount\":500.50,\"date\":\"2026-10-16\"},"
+				+ "{\"amount\":700,\"date\":\"2026-10-15\"}]}");
+
+		Map<String, Object> out = BudgetRules.forecast(d, LocalDate.of(2026, 10, 16));
+
+		assertEquals(new BigDecimal("1200.50"), out.get("spentThisMonth"));
+		assertEquals(new BigDecimal("75.03"), out.get("averagePerDay"));
+		assertEquals(new BigDecimal("2325.97"), out.get("projectedMonthEnd"));
+		assertEquals("on_track", out.get("status"));
+		assertEquals(null, out.get("limitRunsOutOnDay"), "the limit lasts beyond the month");
+	}
+
+	@Test
+	void anEmiPaymentIsNotEverydaySpendingInTheForecast() throws Exception {
+		JsonNode d = data("{\"limits\":{\"monthly\":3000},\"expenses\":[{\"amount\":1000,\"date\":\"2026-10-05\"},"
+				+ "{\"amount\":9000,\"date\":\"2026-10-05\",\"source\":\"emi\"}]}");
+
+		Map<String, Object> out = BudgetRules.forecast(d, LocalDate.of(2026, 10, 10));
+
+		assertEquals(new BigDecimal("1000.00"), out.get("spentThisMonth"));
+	}
+
+	@Test
+	void forecastCopesWithNothingSpentAndWithVeryLargeAmounts() throws Exception {
+		Map<String, Object> none = BudgetRules.forecast(data("{\"limits\":{\"monthly\":3000}}"), TODAY);
+
+		assertEquals(new BigDecimal("0.00"), none.get("projectedMonthEnd"));
+		assertEquals("on_track", none.get("status"));
+		assertEquals(null, none.get("limitRunsOutOnDay"));
+
+		Map<String, Object> huge = BudgetRules.forecast(
+				data("{\"limits\":{\"monthly\":3000},\"expenses\":[{\"amount\":999999999.99,\"date\":\"2026-10-01\"}]}"), TODAY);
+
+		assertEquals("over", huge.get("status"));
+		assertEquals(new BigDecimal("999999999.99"), huge.get("spentThisMonth"));
+		assertEquals(1, huge.get("limitRunsOutOnDay"), "the limit ran out on the first day");
+	}
+
+	@Test
 	void forecastWithoutALimitIsUnknown() throws Exception {
 		Map<String, Object> out = BudgetRules.forecast(data("{}"), TODAY);
 		assertEquals("unknown", out.get("status"));

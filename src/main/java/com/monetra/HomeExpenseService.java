@@ -381,15 +381,15 @@ public class HomeExpenseService {
                 }
 
                 kind = "OVERDUE";
-                message = e.name + " of ₹" + e.amount.toPlainString() + " was due on " + r.due() + " and is not marked paid.";
+                message = e.name + " of " + Inr.of(e.amount) + " was due on " + Inr.date(r.due()) + " and is not marked paid.";
 
             } else if ("DUE_TODAY".equals(r.status())) {
                 kind = "DUE";
-                message = e.name + " of ₹" + e.amount.toPlainString() + " is due today.";
+                message = e.name + " of " + Inr.of(e.amount) + " is due today.";
 
             } else if (!r.due().isAfter(today.plusDays(e.remindDaysBefore))) {
                 kind = "UPCOMING";
-                message = e.name + " of ₹" + e.amount.toPlainString() + " is due on " + r.due() + ".";
+                message = e.name + " of " + Inr.of(e.amount) + " is due on " + Inr.date(r.due()) + ".";
 
             } else {
                 continue;

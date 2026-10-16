@@ -31,11 +31,11 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Explicit Jackson dependency to fix JsonNode/ObjectMapper errors -->
+        <!-- Jackson 2 (JsonNode / ObjectMapper): Spring Boot 4 uses Jackson 3 itself, and this app's own code
+             uses Jackson 2. No version here on purpose: Spring Boot picks the one that matches jackson-core. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.15.2</version>
         </dependency>
 
         <!-- Send OTP emails -->

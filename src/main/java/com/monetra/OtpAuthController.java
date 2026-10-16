@@ -3,7 +3,9 @@ package com.monetra;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +33,20 @@ private final SecureRandom random = new SecureRandom();
 private final BCryptPasswordEncoder passwordEncoder =
         new BCryptPasswordEncoder();
 
+/* 8 wrong passwords in 15 minutes from one address for one email, then a pause. Keyed by both, so a
+   stranger cannot lock someone else out of their own account from another address. */
+private final AttemptLimiter signInTries = new AttemptLimiter(8, Duration.ofMinutes(15));
+
+/* 6 sign-up codes in 15 minutes from one address: the app cannot be used to send a pile of emails. */
+private final AttemptLimiter codeRequests = new AttemptLimiter(6, Duration.ofMinutes(15));
+
+/* A password that matches nobody, checked when the email is unknown, so an unknown email takes as long
+   to answer as a known one. */
+private final String dummyHash = passwordEncoder.encode("this-matches-nobody");
+
+/* BCrypt only looks at the first 72 bytes: longer passwords are refused instead of being silently cut. */
+private static final int MAX_PASSWORD_BYTES = 72;
+
 private final Map<String, PendingUser> pendingUsers =
         new ConcurrentHashMap<>();
 
@@ -56,7 +72,8 @@ public OtpAuthController(
 // STEP 1: SEND OTP TO EMAIL
 @PostMapping("/send-otp")
 public ResponseEntity<String> sendOtp(
-        @RequestBody RegistrationRequest request) {
+        @RequestBody RegistrationRequest request,
+        HttpServletRequest httpRequest) {
 
     if (request.email() == null
             || request.password() == null
@@ -66,6 +83,23 @@ public ResponseEntity<String> sendOtp(
         return ResponseEntity.badRequest().body(
                 "Enter a valid email and a password of at least 8 characters.");
     }
+
+    if (request.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+        return ResponseEntity.badRequest().body(
+                "Use a password of at most " + MAX_PASSWORD_BYTES + " characters.");
+    }
+
+    String client = httpRequest.getRemoteAddr();
+
+    if (codeRequests.blocked(client)) {
+        return ResponseEntity.status(429).body(
+                "Too many code requests. Please wait 15 minutes and try again.");
+    }
+
+    /* Sign-ups that were never finished are forgotten once their code has expired. */
+    Instant now = Instant.now();
+
+    pendingUsers.values().removeIf(p -> now.isAfter(p.expiresAt));
 
     String email = request.email().trim().toLowerCase();
 
@@ -89,13 +123,15 @@ public ResponseEntity<String> sendOtp(
                 "Please wait 60 seconds before requesting another OTP.");
     }
 
-    String otp = String.format("%06d", random.nextInt(1_000_000));
-
     if (Phones.key(request.phone()) == null) {
         return ResponseEntity.badRequest().body(
                 "Enter a valid mobile number (at least 10 digits). "
                 + "Other people use it to find and pay you.");
     }
+
+    codeRequests.record(client);
+
+    String otp = String.format("%06d", random.nextInt(1_000_000));
 
     String fullName = request.name() == null ? "" : request.name().trim();
 
@@ -247,14 +283,29 @@ public ResponseEntity<String> login(
 
     String email = request.email().trim().toLowerCase();
 
-    UserAccount user = users.findByEmail(email).orElse(null);
+    String tries = httpRequest.getRemoteAddr() + "|" + email;
 
-    if (user == null || !passwordEncoder.matches(
-            request.password(), user.getPasswordHash())) {
+    if (signInTries.blocked(tries)) {
+        return ResponseEntity.status(429)
+                .body("Too many sign-in attempts. Please wait 15 minutes and try again.");
+    }
+
+    UserAccount user = email.length() > 254 ? null : users.findByEmail(email).orElse(null);
+
+    boolean tooLong = request.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES;
+
+    /* The password is always checked, against a dummy when the email is unknown, so both take the same time. */
+    boolean matches = !tooLong && passwordEncoder.matches(
+            request.password(), user == null ? dummyHash : user.getPasswordHash());
+
+    if (user == null || !matches) {
+        signInTries.record(tries);
 
         return ResponseEntity.status(401)
                 .body("Incorrect email or password.");
     }
+
+    signInTries.clear(tries);
 
     SessionUser.login(httpRequest, user);
 

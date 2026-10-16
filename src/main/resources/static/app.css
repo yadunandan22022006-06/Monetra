@@ -1951,6 +1951,14 @@ textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(242, 196,
     .bank-art { display: none; }
 }
 
+/* the smallest phones: both buttons still fit side by side */
+
+@media (max-width: 340px) {
+    .bank-card .bank-actions { gap: 8px; }
+
+    .bank-actions button { padding: 12px 6px; font-size: 14px; gap: 6px; }
+}
+
 /* ==========================================================
    LETTERING: Poppins for everything, and the same elegant serif
    as the page titles for every card and dashboard title
@@ -2197,14 +2205,25 @@ body {
 
 .aware-card .risk-chip.low, .aware-card .risk-chip.unknown { display: none; }
 
+/*
+ * The Daily Budget circle. Its size is one variable (--ring-size): the screen-size rules below only change
+ * that, and the ring line, the padding that keeps the number inside it and the number's font all follow.
+ */
+
 .ring {
+    --ring-size: 46px;
+    --ring-line: max(4px, calc(var(--ring-size) * 0.1));
     position: relative;
     flex: 0 0 auto;
-    width: 46px;
-    height: 46px;
-    display: grid;
-    place-items: center;
-    font-size: 12px;
+    box-sizing: border-box;
+    width: var(--ring-size);
+    height: var(--ring-size);
+    aspect-ratio: 1;
+    padding: calc(var(--ring-line) + 2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
     font-weight: 700;
     color: var(--text);
 }
@@ -2215,13 +2234,29 @@ body {
     inset: 0;
     border-radius: 50%;
     background: conic-gradient(var(--money) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.14) 0);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-line)), #000 calc(100% - var(--ring-line)));
+    mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-line)), #000 calc(100% - var(--ring-line)));
 }
 
 .ring.over::before { background: var(--red); }
 
-.ring b { position: relative; }
+/* the number: one line, centred, and smaller the more characters it has (the script sets data-len) */
+
+.ring b {
+    position: relative;
+    font-size: calc(var(--ring-size) * 0.26);
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    letter-spacing: -0.02em;
+}
+
+.ring[data-len="4"] b { font-size: calc(var(--ring-size) * 0.225); }
+
+.ring[data-len="5"] b { font-size: calc(var(--ring-size) * 0.195); }
+
+.ring[data-len="6"] b { font-size: calc(var(--ring-size) * 0.17); }
 
 .tile { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }
 
@@ -2286,7 +2321,7 @@ body {
 
     .aware-main { font-size: 18px; }
 
-    .ring { width: 40px; height: 40px; font-size: 11px; }
+    .ring { --ring-size: 40px; }
 
     .aware-icon { width: 36px; height: 36px; }
 
@@ -2322,7 +2357,7 @@ body {
 
     .aware-card { padding: 8px 12px; }
 
-    .ring { width: 36px; height: 36px; font-size: 10px; }
+    .ring { --ring-size: 36px; }
 
     .tile-grid { gap: 8px; margin-top: 8px; }
 
@@ -2801,7 +2836,7 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
 .home-row .risk-chip.low, .home-row .risk-chip.unknown { display: none; }
 
-.home-row .ring { width: 50px; height: 50px; color: var(--text); font-size: 12px; }
+.home-row .ring { --ring-size: 50px; color: var(--text); }
 
 .home-row .ring::before { background: conic-gradient(var(--money) calc(var(--p, 0) * 1%), #ece8df 0); }
 
@@ -2862,7 +2897,7 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
     .home-row .aware-main, .home-row .tile-status { font-size: 13.5px; }
 
-    .home-row .ring { width: 42px; height: 42px; font-size: 11px; }
+    .home-row .ring { --ring-size: 42px; }
 
     .home-row .spark { height: 32px; max-height: 32px; }
 
@@ -2938,14 +2973,14 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
 .home-row { min-height: 0; }
 
-.home-row .ring { width: 46px; height: 46px; }
+.home-row .ring { --ring-size: 46px; }
 
 @media (max-width: 640px) {
     #dashboardPage .hero-actions .big-action { padding: 6px 8px; font-size: 14px; }
 
     #dashboardPage .hero-actions .big-action .dot { width: 30px; height: 30px; }
 
-    .home-row .ring { width: 40px; height: 40px; }
+    .home-row .ring { --ring-size: 40px; }
 }
 
 /* short windows and small phones: slimmer Home rows, so a full Safe to Spend card still fits */
@@ -2957,7 +2992,7 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
     .row-icon svg.i { width: 20px; height: 20px; }
 
-    .home-row .ring { width: 38px; height: 38px; font-size: 10.5px; }
+    .home-row .ring { --ring-size: 38px; }
 
     .home-row .spark { height: 28px; max-height: 28px; }
 

@@ -54,6 +54,34 @@ class GuardianEngineTest {
 	}
 
 	@Test
+	void thePercentUsedIsExactAtTheLimitAndKeepsGrowingBeyondItWithoutEverWrappingRound() throws Exception {
+		/* Exactly at the limit: 100 per cent, nothing over. */
+		Map<String, Object> exact = dailyBudget.assess(
+				data("{\"limits\":{\"daily\":500},\"expenses\":[{\"amount\":500,\"date\":\"2026-10-11\"}]}"), BigDecimal.ZERO, TODAY);
+
+		assertEquals(100, exact.get("percentUsed"));
+		assertEquals(rupees("0.00"), exact.get("remaining"));
+
+		/* A ₹100 limit and ₹1,11,011 spent: far over, and the number is exact. */
+		Map<String, Object> over = dailyBudget.assess(
+				data("{\"limits\":{\"daily\":100},\"expenses\":[{\"amount\":111011,\"date\":\"2026-10-11\"}]}"), BigDecimal.ZERO, TODAY);
+
+		assertEquals(111011, over.get("percentUsed"));
+
+		/* A decimal limit rounds to a whole per cent. */
+		Map<String, Object> decimals = dailyBudget.assess(
+				data("{\"limits\":{\"daily\":300.50},\"expenses\":[{\"amount\":150.25,\"date\":\"2026-10-11\"}]}"), BigDecimal.ZERO, TODAY);
+
+		assertEquals(50, decimals.get("percentUsed"));
+
+		/* An absurd case stays a positive number instead of wrapping round. */
+		Map<String, Object> absurd = dailyBudget.assess(
+				data("{\"limits\":{\"daily\":0.01},\"expenses\":[{\"amount\":1000000000,\"date\":\"2026-10-11\"}]}"), BigDecimal.ZERO, TODAY);
+
+		assertEquals(Integer.MAX_VALUE, absurd.get("percentUsed"));
+	}
+
+	@Test
 	void anEmiMarkedAsPaidLowersTheBalanceButDoesNotUseUpTheDailyLimit() throws Exception {
 		JsonNode d = data("{\"limits\":{\"daily\":1000},\"profile\":{\"balance\":25000,\"balanceAt\":10},"
 				+ "\"expenses\":[{\"id\":20,\"amount\":5000,\"date\":\"2026-10-11\",\"source\":\"emi\"},"

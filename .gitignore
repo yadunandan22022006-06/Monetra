@@ -37,3 +37,11 @@ data/
 
 ### Local start script with your keys (never upload) ###
 start-local.ps1
+
+### Never commit private or local files
+.env
+.env.*
+*.log
+logs/
+*.mv.db
+*.trace.db

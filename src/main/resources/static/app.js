@@ -4023,6 +4023,44 @@ function updateGoals() {
    FINANCIAL AWARENESS CARDS (Home) AND "MY MONEY"
 ================================ */
 
+/*
+ * The number inside the Daily Budget circle. Up to 999 it is shown exactly, with its per cent sign ("45%",
+ * "100%", "250%"). From 1,000 up it is shortened the Indian way with a plus, meaning "at least this much":
+ * "1k+", "11k+", "1L+", "2L+", "1Cr+". That always fits. The exact figure, with Indian grouping
+ * ("1,11,011%"), is in the circle's tooltip and its accessible name, and the exact amount is written
+ * next to the circle ("₹1,10,911.00 over").
+ */
+
+function compactIndian(n) {
+    const units = [[1e7, 'Cr'], [1e5, 'L'], [1e3, 'k']];
+
+    for (let i = 0; i < units.length; i++) {
+        if (n >= units[i][0]) {
+            /* Whole units, rounded down, so "+" is always true. From 99 crore up it just says 99Cr+. */
+            return Math.min(99, Math.floor(n / units[i][0])) + units[i][1] + '+';
+        }
+    }
+
+    return String(n);
+}
+
+function ringText(percent) {
+    const n = Math.round(Number(percent) || 0);
+
+    return n < 1000 ? n + '%' : compactIndian(n);
+}
+
+function setRing(ring, text, exact) {
+    ring.firstElementChild.textContent = text;
+
+    /* The font size follows the text's length (see .ring in the stylesheet). */
+    ring.dataset.len = String(Math.min(text.length, 6));
+
+    ring.title = exact;
+    ring.setAttribute('role', 'img');
+    ring.setAttribute('aria-label', exact);
+}
+
 function setChip(id, text, level) {
     const chip = $(id);
 
@@ -4051,7 +4089,8 @@ function renderAwareness() {
 
         ring.style.setProperty('--p', Math.min(100, used));
         ring.classList.toggle('over', over);
-        ring.firstElementChild.textContent = Math.round(used) + '%';
+
+        setRing(ring, ringText(used), 'Used today: ' + used.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '% of your daily limit');
 
     } else {
         setChip('awareDailyChip', 'No limit set', 'UNKNOWN');
@@ -4061,7 +4100,8 @@ function renderAwareness() {
 
         ring.style.setProperty('--p', 0);
         ring.classList.remove('over');
-        ring.firstElementChild.textContent = '—';
+
+        setRing(ring, '—', 'No daily limit set');
     }
 
     $('awareDailySub').textContent = '';

@@ -7,13 +7,17 @@ import java.time.LocalDate;
 import java.util.Set;
 
 /**
- * Checks the parts of a user's records that the Guardian calculates with: loans, savings goals
- * and the money profile. Amounts must be real, not negative and not absurd; dates must be dates.
+ * Checks the parts of a user's records that the Guardian calculates with: loans, savings goals,
+ * the money profile, the spending limits and the amounts of expenses, income and savings.
+ * Amounts must be real, not negative and not absurd; dates must be dates.
  */
 public final class RecordsValidator {
 
     private static final BigDecimal MAX = new BigDecimal("1000000000");
     private static final int MAX_ITEMS = 200;
+
+    /** Expenses and the like can be many; this only stops an absurdly long list. */
+    private static final int MAX_ENTRIES = 5000;
 
     private static final Set<String> FREQUENCIES = Set.of("MONTHLY", "WEEKLY", "YEARLY");
     private static final Set<String> LOAN_STATUSES = Set.of("ACTIVE", "CLOSED");
@@ -79,6 +83,34 @@ public final class RecordsValidator {
 
             if (!oneOf(goal.path("priority"), PRIORITIES) || !count(goal.path("remindDay"), 28)) {
                 return "A goal has an unknown priority or reminder day.";
+            }
+        }
+
+        /* Every spending limit is a real amount from 0 up, and so is every amount in the lists of entries. */
+
+        JsonNode limits = records.path("limits");
+
+        for (String period : new String[] {"daily", "weekly", "monthly", "yearly"}) {
+            if (!amount(limits.path(period))) {
+                return "Enter a valid " + period + " spending limit: an amount from 0 to " + MAX.toPlainString() + ".";
+            }
+        }
+
+        if (!amount(records.path("dailyLimit"))) {
+            return "Enter a valid daily spending limit.";
+        }
+
+        for (String list : new String[] {"expenses", "income", "savings", "payments"}) {
+            JsonNode entries = records.path(list);
+
+            if (entries.size() > MAX_ENTRIES) {
+                return "There are too many " + list + ".";
+            }
+
+            for (JsonNode entry : entries) {
+                if (!amount(entry.path("amount"))) {
+                    return "Every amount in your " + list + " must be a number from 0 to " + MAX.toPlainString() + ".";
+                }
             }
         }
 

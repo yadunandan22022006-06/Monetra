@@ -58,8 +58,8 @@ public final class FraudRules {
             BigDecimal average = total.divide(BigDecimal.valueOf(completed), 2, java.math.RoundingMode.HALF_UP);
 
             if (amount.compareTo(average.multiply(UNUSUAL_MULTIPLE)) > 0) {
-                reasons.add("This amount is more than 3 times your usual payment of about ₹"
-                        + average.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString() + ".");
+                reasons.add("This amount is more than 3 times your usual payment of about "
+                        + Inr.whole(average) + ".");
             }
         }
 

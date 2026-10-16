@@ -75,7 +75,7 @@ class HomeFlowTest {
 		/* Reminders appear in the bell once, even if the list is loaded again. */
 		String notes = hana.get("/api/notifications").body();
 
-		assertTrue(notes.contains("House rent of ₹8000.00 is due today."), notes);
+		assertTrue(notes.contains("House rent of ₹8,000.00 is due today."), notes);
 		assertTrue(notes.contains("Wi-Fi of ₹799.00 was due on"), notes);
 
 		String again = hana.get("/api/notifications").body();

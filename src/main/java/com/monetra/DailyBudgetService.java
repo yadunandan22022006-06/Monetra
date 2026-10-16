@@ -39,7 +39,11 @@ public class DailyBudgetService {
             BigDecimal remaining = limit.subtract(spent);
 
             out.put("remaining", remaining.max(BigDecimal.ZERO));
-            out.put("percentUsed", spent.multiply(BigDecimal.valueOf(100)).divide(limit, 0, RoundingMode.HALF_UP).intValue());
+            /* A whole number of per cent. It can be far above 100 (a ₹100 limit and ₹1,11,011 spent is 111011),
+               and it is capped at the largest whole number so a tiny limit can never wrap it round to a negative one. */
+            BigDecimal percent = spent.multiply(BigDecimal.valueOf(100)).divide(limit, 0, RoundingMode.HALF_UP);
+
+            out.put("percentUsed", percent.min(BigDecimal.valueOf(Integer.MAX_VALUE)).intValue());
 
             if (amount.compareTo(remaining) > 0) {
                 out.put("overBy", BudgetRules.money(amount.subtract(remaining)));
