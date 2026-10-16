@@ -1029,6 +1029,11 @@ function showSubtab(group, tab) {
         stopScan();
     }
 
+    /* The PayPal list shows each payment's latest status whenever it is opened. */
+    if (group === 'gai' && tab === 'paypal') {
+        loadPayments();
+    }
+
     queueBand();
 }
 
@@ -2668,16 +2673,24 @@ function activityItems() {
     /* Home expenses (HE) have their own history, so they are not repeated here. */
 
     records.expenses.filter(e => e.source !== 'paypal' && e.source !== 'he').forEach(e => {
+        const id = Number(e.id) || 0;
+        const noon = new Date(e.date + 'T12:00:00').getTime();
+
+        /* An id made from the moment it was added is its exact time, but only when it was added on that same day. */
+        const sameDay = id > 1e12 && new Date(id).toDateString() === new Date(noon).toDateString();
+
         items.push({
             kind: 'EXPENSE',
             title: e.name,
             sub: displayDate(e.date) + ' • Recorded expense',
             amount: Number(e.amount),
-            at: Number(e.id) || new Date(e.date + 'T12:00:00').getTime()
+            at: sameDay ? id : noon,
+            seq: id
         });
     });
 
-    items.sort((a, b) => b.at - a.at);
+    /* Newest first; on the same moment, the one added last first. */
+    items.sort((a, b) => (b.at - a.at) || ((b.seq || 0) - (a.seq || 0)));
 
     return items;
 }
@@ -3247,14 +3260,19 @@ $('forecastExplain').addEventListener('click', async function() {
     box.replaceChildren(makeElement('div', 'empty-state', '🛡️ The Guardian is thinking...'));
 
     try {
-        const result = await postJson('/api/guardian/forecast/explain', {}, 20000);
+        const result = await postJson('/api/guardian/forecast/explain', {}, 90000);
 
         box.replaceChildren(makeElement('div', 'alert-box', '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 700)));
 
     } catch (error) {
+        /* Say why: the AI could not be reached, or its answer did not match the figures and was not shown. */
+        const mismatch = /did not match/i.test(String(error && error.message));
+
         box.replaceChildren(
             makeElement('div', 'alert-box', '🛡️ ' + forecastText(forecast)),
-            makeElement('div', 'footer-note', 'AI is not available right now: this uses Monetra\'s rules.')
+            makeElement('div', 'footer-note', mismatch
+                ? 'The AI answer did not match your figures, so Monetra\'s own check is shown.'
+                : 'AI is not available right now: this uses Monetra\'s rules.')
         );
 
     } finally {
@@ -6524,6 +6542,7 @@ const SCAM_TITLES = {
     ELECTRICITY: 'ELECTRICITY CUT THREAT',
     KYC: 'ACCOUNT BLOCK THREAT',
     PRIZE: 'PRIZE OR LOTTERY',
+    FEE: 'PAY A FEE FIRST',
     AUTHORITY: 'CLAIMS TO BE AN OFFICIAL',
     JOB: 'EASY MONEY OFFER',
     FAMILY: 'NEW NUMBER, NEEDS MONEY',
@@ -6613,8 +6632,8 @@ function renderScam(result, text, run) {
 
     const head = makeElement('div', 'card-head');
 
+    /* The level is shown once, in the coloured line under the title. */
     head.appendChild(makeElement('h2', '', 'Scam Shield result'));
-    head.appendChild(riskChip('Risk: ' + result.level, result.level));
 
     box.appendChild(head);
 

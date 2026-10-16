@@ -52,7 +52,8 @@ public class AgentTools {
                 Map.of(), List.of()));
 
         tools.add(tool("get_upcoming_expenses",
-                "List unpaid and upcoming household expenses and EMIs due in the next days, with totals.",
+                "List unpaid household expenses and EMIs: those already overdue (overdue: true, mention them first) "
+                        + "and those due in the next days, with totals.",
                 Map.of("days", prop("integer", "How many days ahead to look (1 to 60). Default 7.")),
                 List.of()));
 
@@ -140,16 +141,24 @@ public class AgentTools {
         BigDecimal emiTotal = BigDecimal.ZERO;
 
         for (JsonNode loan : data(userId).path("loans")) {
+            if ("CLOSED".equals(loan.path("status").asText(""))) {
+                continue;
+            }
+
             String due = loan.path("due").asText("");
 
             try {
                 LocalDate d = LocalDate.parse(due);
 
-                if (!d.isBefore(today) && !d.isAfter(today.plusDays(days))) {
+                /* An EMI whose date has passed and is not marked paid is overdue: the most important one to mention. */
+                boolean overdue = d.isBefore(today);
+
+                if (overdue || !d.isAfter(today.plusDays(days))) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("name", loan.path("name").asText(""));
                     m.put("amountInr", loan.path("amount").decimalValue());
                     m.put("dueDate", due);
+                    m.put("overdue", overdue);
                     emis.add(m);
                     emiTotal = emiTotal.add(loan.path("amount").decimalValue());
                 }

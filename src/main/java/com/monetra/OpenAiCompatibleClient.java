@@ -1,12 +1,15 @@
 package com.monetra;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -21,9 +24,14 @@ import java.util.Map;
  * and Ollama running on this computer.
  *
  * Set AI_BASE_URL, AI_MODEL and (except for a local Ollama) AI_API_KEY. See the README for examples.
+ *
+ * AI_FALLBACK_BASE_URL and AI_FALLBACK_MODEL can name an AI on this computer (Ollama). It is asked only
+ * when the online AI cannot be reached, so a dropped connection does not stop the AI features.
  */
 @Component
 public class OpenAiCompatibleClient implements AiProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleClient.class);
 
     @Value("${ai.base-url:}")
     private String baseUrl;
@@ -33,6 +41,13 @@ public class OpenAiCompatibleClient implements AiProvider {
 
     @Value("${ai.model:}")
     private String model;
+
+    /** The AI on this computer that answers when the online one cannot be reached. Empty: none. */
+    @Value("${ai.fallback-base-url:}")
+    private String fallbackUrl;
+
+    @Value("${ai.fallback-model:}")
+    private String fallbackModel;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -76,13 +91,37 @@ public class OpenAiCompatibleClient implements AiProvider {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Ai.Step step(String system, List<Ai.Turn> conversation, List<Map<String, Object>> tools, int maxTokens) {
+        try {
+            return step(baseUrl, model, apiKey, system, conversation, tools, maxTokens);
+
+        } catch (ResourceAccessException e) {
+            /* The online AI could not be reached (no connection, a dropped handshake, a timeout). */
+            if (!fallbackReady()) {
+                throw e;
+            }
+
+            log.warn("The online AI could not be reached ({}); the AI on this computer answers instead", e.getMessage());
+
+            return step(fallbackUrl, fallbackModel, null, system, conversation, tools, maxTokens);
+        }
+    }
+
+    /** True when a different AI on this computer is set up to answer instead. */
+    boolean fallbackReady() {
+        return fallbackUrl != null && !fallbackUrl.isBlank() && fallbackModel != null && !fallbackModel.isBlank()
+                && !fallbackUrl.equals(baseUrl);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Ai.Step step(String toUrl, String toModel, String key, String system, List<Ai.Turn> conversation,
+                         List<Map<String, Object>> tools, int maxTokens) {
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        if (apiKey != null && !apiKey.isBlank()) {
-            headers.setBearerAuth(apiKey);
+        if (key != null && !key.isBlank()) {
+            headers.setBearerAuth(key);
         }
 
         List<Map<String, Object>> messages = new ArrayList<>();
@@ -90,7 +129,7 @@ public class OpenAiCompatibleClient implements AiProvider {
         messages.addAll(wire(conversation));
 
         Map<String, Object> request = new HashMap<>();
-        request.put("model", model);
+        request.put("model", toModel);
         request.put("max_tokens", maxTokens);
         request.put("temperature", 0.2);   /* stay close to the facts */
         request.put("messages", messages);
@@ -99,9 +138,9 @@ public class OpenAiCompatibleClient implements AiProvider {
             request.put("tools", wireTools(tools));
         }
 
-        reasoningSettings(request, baseUrl, model, maxTokens);
+        reasoningSettings(request, toUrl, toModel, maxTokens);
 
-        String url = baseUrl.endsWith("/") ? baseUrl + "chat/completions" : baseUrl + "/chat/completions";
+        String url = toUrl.endsWith("/") ? toUrl + "chat/completions" : toUrl + "/chat/completions";
 
         Map<String, Object> reply = http.postForObject(url, new HttpEntity<>(request, headers), Map.class);
 

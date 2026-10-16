@@ -97,6 +97,12 @@ public class ScamShieldService {
                     "It says you won a prize, lottery or reward you never entered.",
                     false, p("\\b(lottery|lucky draw|jackpot|you (have )?won|winner|prize|kbc|gift voucher)\\b")),
 
+            new Rule("FEE", 4,
+                    "It asks you to pay a fee, tax or deposit first to get a prize, refund, loan, job or parcel. "
+                            + "Real prizes and refunds never need a payment first.",
+                    true, p("\\b(pay|deposit|transfer|send)\\b[^.!?]{0,30}\\b(fee|fees|charge|charges|tax|gst|deposit|advance)\\b"),
+                    p("\\b(claim|receive|release|prize|won|refund|loan|job|parcel|delivery|reward|cashback|lottery)\\b")),
+
             new Rule("JOB", 3,
                     "It offers easy money: a part-time job, tasks to earn or guaranteed returns. These ask you to pay first and never pay back.",
                     false, p("\\b(part[- ]time job|work from home|daily (income|earning)|double your money|guaranteed (return|returns|profit)"

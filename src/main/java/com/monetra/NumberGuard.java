@@ -1,6 +1,7 @@
 package com.monetra;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -173,9 +174,20 @@ public final class NumberGuard {
         return text == null ? "" : text.toLowerCase(Locale.ROOT).replace('’', '\'').replaceAll("\\s+", " ").trim();
     }
 
-    /** True when every number in the reply also appears in the facts ("1,500.00" and "1500" are the same). */
+    /**
+     * True when every number in the reply also appears in the facts ("1,500.00" and "1500" are the same),
+     * or is a fact rounded to whole rupees.
+     */
     public static boolean onlyKnownNumbers(String reply, String facts) {
-        Set<BigDecimal> known = numbers(facts);
+        Set<BigDecimal> known = new HashSet<>(numbers(facts));
+
+        /* A fact rounded to whole rupees ("about ₹4,379" for ₹4,378.75) is still that fact, not a new number. */
+        for (BigDecimal n : numbers(facts)) {
+            if (n.scale() > 0) {
+                known.add(n.setScale(0, RoundingMode.HALF_UP));
+                known.add(n.setScale(0, RoundingMode.DOWN));
+            }
+        }
 
         for (BigDecimal n : numbers(reply)) {
             if (!known.contains(n)) {

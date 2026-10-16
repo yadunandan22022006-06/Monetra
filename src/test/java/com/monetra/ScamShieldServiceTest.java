@@ -53,6 +53,18 @@ class ScamShieldServiceTest {
 	}
 
 	@Test
+	void aFeeToClaimAPrizeIsHighRisk() {
+		Map<String, Object> r = shield.check("Congratulations! You won Rs 50000 in KBC lottery. "
+				+ "Pay Rs 999 processing fee to claim. Call 9876500000 now.");
+
+		assertEquals("HIGH", r.get("level"));
+		assertTrue(rules(r).contains("FEE"), rules(r));
+
+		/* Advice not to pay is not a request to pay. */
+		assertEquals("LOW", shield.check("Never pay any fee to get a refund.").get("level"));
+	}
+
+	@Test
 	void aJobOfferIsMediumRisk() {
 		Map<String, Object> r = shield.check("Part time job from home! Just like and earn, message us on WhatsApp.");
 

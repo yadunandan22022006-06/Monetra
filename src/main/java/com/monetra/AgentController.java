@@ -42,7 +42,8 @@ public class AgentController {
     private static final String SYSTEM =
             "You are the AI Financial Guardian inside Monetra, a personal finance and payments app for students and families in India. "
             + "Answer the user's question using the tools. Never invent balances, dates, transactions, names or numbers: "
-            + "every figure you state must come from a tool result. Write amounts in rupees with the ₹ symbol. "
+            + "every figure you state must come from a tool result. Write amounts in rupees with the ₹ symbol, "
+            + "and dates like 14 Oct 2026. "
             + "You cannot send money and you cannot save anything. prepare_payment and prepare_reminder only prepare a draft "
             + "that the user must review and confirm in the app, so never say a payment was made or a reminder was saved; "
             + "say it is prepared and waiting for their confirmation. "
@@ -137,8 +138,10 @@ public class AgentController {
 
                 if (reply.calls().isEmpty()) {
                     Map<String, Object> out = new LinkedHashMap<>();
+                    /* Amounts written the way the rest of the app writes them: "₹480", not "₹ 480". */
                     out.put("reply", reply.text().isEmpty()
-                            ? "I could not put an answer together. Please try asking again." : reply.text());
+                            ? "I could not put an answer together. Please try asking again."
+                            : reply.text().replaceAll("₹\\s+(?=\\d)", "₹"));
                     out.put("payments", preparedPayments);
                     out.put("reminders", preparedReminders);
                     out.put("toolsUsed", used);

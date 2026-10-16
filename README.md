@@ -212,6 +212,7 @@ Import `postman/monetra.postman_collection.json` into **Postman**. Log in first;
 | `SETU_AA_CLIENT_ID`, `SETU_AA_CLIENT_SECRET`, `SETU_AA_PRODUCT_INSTANCE_ID` | Setu Account Aggregator keys for Check Balance (from bridge.setu.co, your FIU data product) |
 | `SETU_AA_BASE_URL` | Optional. `https://fiu-sandbox.setu.co` (the default) or Setu's production gateway |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` | A FREE AI (Gemini, Groq, Ollama): see "Free AI" (optional) |
+| `AI_FALLBACK_BASE_URL`, `AI_FALLBACK_MODEL` | An AI on this computer (Ollama) that answers only when the online AI cannot be reached. `start-local.ps1` sets them when Ollama is installed (optional) |
 | `ANTHROPIC_API_KEY` | Claude instead (paid, optional) |
 | `AI_PROVIDER` | `openai` or `anthropic` to force one (empty chooses automatically) |
 | `MONETRA_SEED_DEMO_USERS` | `true` creates the demo accounts |

@@ -114,6 +114,14 @@ class NumberGuardTest {
 	}
 
 	@Test
+	void aFactRoundedToWholeRupeesIsAcceptedButNothingElse() {
+		assertTrue(NumberGuard.onlyKnownNumbers("About ₹151 of it was already spent.", FACTS));
+		assertTrue(NumberGuard.onlyKnownNumbers("About ₹150 of it was already spent.", FACTS));
+		assertFalse(NumberGuard.onlyKnownNumbers("About ₹152 of it was already spent.", FACTS));
+		assertFalse(NumberGuard.onlyKnownNumbers("Try to spend ₹10 to ₹20 less a day.", FACTS));
+	}
+
+	@Test
 	void anInventedNumberIsCaught() {
 		assertFalse(NumberGuard.onlyKnownNumbers("This is over your daily limit of ₹5,000.", FACTS));
 		assertFalse(NumberGuard.onlyKnownNumbers("That is about 20 times your limit.", FACTS));
