@@ -255,6 +255,14 @@ The H2 file database lives on the container disk, so **data resets when the serv
 
 Monetra is a decision-support tool. It cannot guarantee that a recommendation is right or that you will avoid financial loss.
 
+## How Monetra was built
+
+Monetra was created by **Yadunandan** ([@yadunandan22022006-06](https://github.com/yadunandan22022006-06)): the idea, what to build, how it should look and behave, the decisions along the way, testing the app, and publishing it.
+
+The code, tests and documentation were written with **Claude**, Anthropic's AI coding assistant (used through Claude Code), working from Yadunandan's instructions, screenshots and feedback. Commits made with Claude's help carry a `Co-Authored-By: Claude` line. One commit ("Fix security validation and financial formatting") was saved without that line, although Claude did that work too.
+
+This is separate from the AI inside the app: Monetra's Java code does every calculation, and the app's AI (Groq, Claude or a model on your own computer) only explains the result in words.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
