@@ -2134,16 +2134,6 @@ body {
 
 .home-hero .subtabs { flex: 0 1 380px; margin: 4px 0 0; }
 
-.hero-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-
-.hero-stat { display: flex; align-items: center; justify-content: center; gap: 12px; }
-
-.hero-stat > svg.i { width: 34px; height: 34px; color: var(--gold); fill: rgba(242, 196, 92, 0.16); }
-
-.hero-stat-label { display: block; color: var(--gold); font-size: 13px; font-weight: 500; }
-
-.hero-stat strong { display: block; color: var(--text); font-size: 22px; font-weight: 700; }
-
 .home-hero .safe-text { font-size: 13px; color: var(--muted); }
 
 .home-hero .safe-text:empty { display: none; }
@@ -2281,10 +2271,6 @@ body {
     .home-hero { gap: 8px; margin-top: 8px; padding: 12px 16px; }
 
     .home-hero .safe-amount { font-size: clamp(32px, 9vw, 44px); }
-
-    .hero-stat > svg.i { width: 28px; height: 28px; }
-
-    .hero-stat strong { font-size: 18px; }
 
     .hero-actions { margin-top: 10px; }
 
@@ -2748,21 +2734,6 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
 .home-hero .safe-text { color: #b9c1d6; }
 
-#dashboardPage .hero-stats {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0;
-    padding: 14px 10px;
-    background: rgba(255, 255, 255, 0.04);
-    border-top: 1px solid rgba(242, 196, 92, 0.25);
-}
-
-.hero-stat + .hero-stat { border-left: 1px solid rgba(255, 255, 255, 0.12); }
-
-#dashboardPage .hero-stat > svg.i { width: 34px; height: 34px; color: #f2c45c; fill: rgba(242, 196, 92, 0.22); }
-
-#dashboardPage .hero-stat strong { color: #ffffff; font-size: 21px; }
-
 #dashboardPage .big-action { background: #ffffff; color: var(--text); border: 1.5px solid #1a2550; box-shadow: none; }
 
 #dashboardPage .big-action .dot { background: #0b1638; color: #ffffff; border: 0; }
@@ -2879,12 +2850,6 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
     .home-hero .safe-amount { font-size: clamp(30px, 9vw, 42px); }
 
-    #dashboardPage .hero-stats { padding: 10px 6px; }
-
-    #dashboardPage .hero-stat > svg.i { width: 28px; height: 28px; }
-
-    #dashboardPage .hero-stat strong { font-size: 17px; }
-
     .home-list { gap: 8px; margin-top: 10px; }
 
     .home-row { min-height: 54px; padding: 7px 12px; gap: 12px; }
@@ -2997,8 +2962,6 @@ body:not(.auth-mode) { background: #f4f2ec; }
     .home-row .spark { height: 28px; max-height: 28px; }
 
     #homeView .tab-panel[data-tab="overview"] > .home-list { grid-auto-rows: minmax(46px, 1fr); }
-
-    #dashboardPage .hero-stats { padding: 8px 6px; }
 }
 
 /* a very short window (under 700px high): the Safe to Spend card and the two buttons a little smaller */

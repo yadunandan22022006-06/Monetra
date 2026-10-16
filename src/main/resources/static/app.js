@@ -948,7 +948,7 @@ document.querySelectorAll('#bottomNav button').forEach(button => {
     button.addEventListener('click', () => navigateTo(button.dataset.view));
 });
 
-/* The navy band reaches just below each screen's title and tabs; on Home, to the Safe to Spend figures. */
+/* The navy band reaches just below each screen's title and tabs; on Home, behind most of the Safe to Spend card. */
 
 function placeBand() {
     const page = $('dashboardPage');
@@ -959,12 +959,14 @@ function placeBand() {
     }
 
     const top = page.getBoundingClientRect().top;
-    const stats = view.querySelector('.home-hero .hero-stats');
+    const hero = view.querySelector('.home-hero');
 
     let bottom;
 
-    if (stats && stats.offsetParent) {
-        bottom = stats.getBoundingClientRect().top - 6;
+    if (hero && hero.offsetParent) {
+        const card = hero.getBoundingClientRect();
+
+        bottom = card.bottom - Math.min(44, card.height * 0.25);
 
     } else {
         const heads = [...view.querySelectorAll(':scope > .page-head, :scope > .subtabs, :scope > .seg')]
@@ -6475,8 +6477,6 @@ function renderSafeToSpend() {
         amount.textContent = '—';
         amount.className = 'safe-amount unknown';
 
-        $('safeBalance').textContent = '—';
-        $('safeProtected').textContent = '—';
         $('safeAvail').classList.add('hidden');
         $('safeText').textContent = s && s.text ? s.text : 'Tap to add your balance and income day.';
         return;
@@ -6485,8 +6485,6 @@ function renderSafeToSpend() {
     amount.textContent = money(s.amount);
     amount.className = 'safe-amount ' + (RISK_CLASS[s.status] || 'low');
 
-    $('safeBalance').textContent = money(s.balance);
-    $('safeProtected').textContent = money(s.protected);
 
     /* The share of today's safe money that is still unspent. */
 
