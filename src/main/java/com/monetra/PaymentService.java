@@ -64,7 +64,8 @@ public class PaymentService {
         payments.save(rec);
 
         notifyUser(rec.userId, "PAYMENT_SENT",
-                "You sent " + rupees(rec.amountInr) + " to " + rec.recipientName + ".", rec.paymentId);
+                "You sent " + rupees(rec.amountInr) + " to " + Phones.fullLabel(rec.recipientName, rec.recipientPhone) + ".",
+                rec.paymentId);
 
         if (rec.recipientUserId != null) {
             String from = users.findById(rec.userId).map(u -> u.displayName()).orElse("someone");

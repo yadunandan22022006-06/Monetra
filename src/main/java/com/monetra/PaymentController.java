@@ -564,7 +564,8 @@ public class PaymentController {
             payments.save(rec);
 
             service.notifyUser(rec.userId, "PAYMENT_FAILED",
-                    "Your payment of " + PaymentService.rupees(rec.amountInr) + " to " + rec.recipientName
+                    "Your payment of " + PaymentService.rupees(rec.amountInr) + " to "
+                            + Phones.fullLabel(rec.recipientName, rec.recipientPhone)
                             + " did not go through. No money was taken.", rec.paymentId);
 
             return error(HttpStatus.BAD_GATEWAY, rec.message);
@@ -678,8 +679,11 @@ public class PaymentController {
         out.put("payoutMessage", rec.payoutMessage);
 
         if (sent) {
-            out.put("counterparty", rec.recipientName);
-            out.put("recipientName", rec.recipientName);
+            /* Only the sender sees this, and the number is the one they typed. Older records say "Contact 98xxxxxx10". */
+            String name = Phones.fullLabel(rec.recipientName, rec.recipientPhone);
+
+            out.put("counterparty", name);
+            out.put("recipientName", name);
             out.put("recipientPhone", rec.recipientPhone);
             out.put("bankName", rec.bankName);
             out.put("ifsc", rec.ifsc);

@@ -18,20 +18,40 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationRepository notifications;
+    private final PaymentRepository payments;
     private final HomeExpenseService home;
     private final GuardianAnalysisService guardian;
     private final GuardianScoreService score;
 
     public NotificationController(
             NotificationRepository notifications,
+            PaymentRepository payments,
             HomeExpenseService home,
             GuardianAnalysisService guardian,
             GuardianScoreService score) {
 
         this.notifications = notifications;
+        this.payments = payments;
         this.home = home;
         this.guardian = guardian;
         this.score = score;
+    }
+
+    /**
+     * Older payment notifications say "You sent ₹222.00 to Contact 81xxxxxx52." The payment they belong to has the full
+     * number the sender typed, so the sender sees it. Only the sender's own payment is used, and a notification that
+     * has no full number behind it is left exactly as it is. This changes what is shown, never what is stored.
+     */
+    private void showFullNumbers(Long userId, List<Notification> items) {
+        for (Notification n : items) {
+            if (n.paymentId == null || n.message == null || !n.message.contains("xxxxxx")) {
+                continue;
+            }
+
+            payments.findById(n.paymentId)
+                    .filter(p -> userId.equals(p.userId))
+                    .ifPresent(p -> n.message = Phones.fullLabel(n.message, p.recipientPhone));
+        }
     }
 
     @GetMapping
@@ -69,7 +89,11 @@ public class NotificationController {
         /* Two sides: payments and alerts in "items", the Guardian Score and its badges in "scoreItems". */
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("unread", notifications.countByUserIdAndSeenFalse(userId));
-        out.put("items", notifications.findTop30ByUserIdAndTypeNotInOrderByCreatedAtDesc(userId, GuardianScoreService.NOTIFICATION_TYPES));
+        List<Notification> items = notifications.findTop30ByUserIdAndTypeNotInOrderByCreatedAtDesc(userId, GuardianScoreService.NOTIFICATION_TYPES);
+
+        showFullNumbers(userId, items);
+
+        out.put("items", items);
         out.put("scoreItems", notifications.findTop30ByUserIdAndTypeInOrderByCreatedAtDesc(userId, GuardianScoreService.NOTIFICATION_TYPES));
         return ResponseEntity.ok(out);
     }

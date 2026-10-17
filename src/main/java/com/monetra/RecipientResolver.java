@@ -34,11 +34,11 @@ public class RecipientResolver {
         this.contacts = contacts;
     }
 
-    /** The sender's own name for a number that is not on Monetra: their contact, or a masked label. */
+    /** The sender's own name for a number that is not on Monetra: their contact, or "Contact" and the number they typed. */
     public String labelFor(Long senderId, String key) {
         return contacts.findByUserIdAndPhoneKey(senderId, key)
                 .map(c -> c.name)
-                .orElse("Contact " + Phones.mask(key));
+                .orElse(Phones.contactLabel(key));
     }
 
     /** Throws IllegalArgumentException with a friendly message if the details are not valid. */
@@ -86,7 +86,7 @@ public class RecipientResolver {
                 ? found.displayName()
                 : contacts.findByUserIdAndPhoneKey(senderId, key)
                         .map(c -> c.name)
-                        .orElse(scanned.isEmpty() ? "Contact " + Phones.mask(key) : scanned);
+                        .orElse(scanned.isEmpty() ? Phones.contactLabel(key) : scanned);
 
         return new Recipient(
                 label,
