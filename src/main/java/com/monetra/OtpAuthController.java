@@ -161,9 +161,12 @@ public ResponseEntity<String> sendOtp(
 
         pendingUsers.remove(email, pending);
 
+        /* What the person running the server has to do goes to the log; visitors get a plain sentence. */
+        log.warn("Sign-up refused: email is not set up. Set MONETRA_MAIL_USERNAME and MONETRA_MAIL_PASSWORD "
+                + "(a Gmail App Password) to turn it on.");
+
         return ResponseEntity.status(503).body(
-                "Email sending is not set up on the server. Set MONETRA_MAIL_USERNAME and "
-                + "MONETRA_MAIL_PASSWORD (a Gmail App Password), then restart Monetra.");
+                "Creating new accounts is switched off on this website. Please sign in with a demo account instead.");
     }
 
     try {
