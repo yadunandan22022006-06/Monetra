@@ -34,6 +34,23 @@ class ScamShieldServiceTest {
 	}
 
 	@Test
+	void everyReasonCarriesItsOwnRiskLevelForTheCards() {
+		Map<String, Object> r = shield.check("Dear customer, your electricity power will be disconnected tonight at 9:30 pm "
+				+ "because your last bill was not updated. Pay immediately at http://bit.ly/eb-pay");
+
+		for (Object o : (List<?>) r.get("reasons")) {
+			Object level = ((Map<?, ?>) o).get("level");
+
+			assertTrue("HIGH".equals(level) || "MEDIUM".equals(level) || "LOW".equals(level), "level of " + o);
+		}
+
+		/* The PIN rule is the heaviest one: it is HIGH on its own. */
+		Map<String, Object> pin = shield.check("Enter your UPI PIN to receive the money.");
+
+		assertEquals("HIGH", ((Map<?, ?>) ((List<?>) pin.get("reasons")).get(0)).get("level"));
+	}
+
+	@Test
 	void aPinToReceiveAPrizeIsHighRisk() {
 		Map<String, Object> r = shield.check("Congratulations! You have won Rs 25,00,000 in the KBC lottery. "
 				+ "To receive the prize money, enter your UPI PIN.");

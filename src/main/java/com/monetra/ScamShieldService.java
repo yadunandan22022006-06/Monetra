@@ -182,6 +182,7 @@ public class ScamShieldService {
             Map<String, String> reason = new LinkedHashMap<>();
             reason.put("rule", rule.id());
             reason.put("text", rule.reason());
+            reason.put("level", rule.weight() >= HIGH ? "HIGH" : rule.weight() >= MEDIUM ? "MEDIUM" : "LOW");
             reasons.add(reason);
 
             phrases.addAll(found);
