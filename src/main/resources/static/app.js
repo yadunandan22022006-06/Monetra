@@ -831,9 +831,8 @@ async function openDashboard(profile) {
 
     renderAll();
 
+    /* Opening Home already loads the Guardian's figures (and the score), once. */
     navigateTo('homeView');
-
-    loadOverview();
 
     await loadPayments();
 
@@ -2181,16 +2180,6 @@ $('paymentForm').addEventListener('submit', function(event) {
     startReview();
 });
 
-function statRow(label, value, className) {
-    const row = makeElement('div', 'record-item');
-
-    row.appendChild(makeElement('div', '', label));
-
-    row.appendChild(makeElement('div', 'transaction-amount ' + (className || ''), value));
-
-    return row;
-}
-
 function hideReview() {
     $('reviewPanel').classList.add('hidden');
     $('reviewMessage').textContent = '';
@@ -2231,41 +2220,150 @@ function riskChip(text, level) {
     return makeElement('span', 'risk-chip ' + (RISK_CLASS[level] || 'unknown'), text);
 }
 
-/* One numbered red box: what is wrong, and what the user could do about it. */
+/*
+ * The Guardian's review cards (Pay review and HE): one card for each thing it found, with its own icon, a risk
+ * label, the facts and what to do about it. A warning is labelled HIGH or MEDIUM RISK, a fine item is green.
+ */
 
-function alertBox(index, title, text, action) {
-    const item = makeElement('div', 'alert-card');
+const REVIEW_ICONS = [
+    [/LIMIT EXCEEDED/, 'warn', 'wallet'],
+    [/PAYMENT RISK/, 'card', 'card'],
+    [/LOAN|EMI|BILLS/, 'bank', 'bulb'],
+    [/BALANCE|SPENDING LIMITS/, 'wallet', 'bulb'],
+    [/SAVINGS|GOAL/, 'target', 'bulb'],
+    [/FRAUD/, 'shield', 'bulb']
+];
 
-    const head = makeElement('div', 'alert-card-head');
+/* The picture on the left and the picture in the "what to do" strip. */
 
-    /* ①, ②, ③ ... */
-    head.appendChild(makeElement('span', 'alert-badge', String.fromCharCode(0x2460 + Math.min(index, 19))));
-    head.appendChild(makeElement('span', 'alert-card-title', title));
-    head.appendChild(makeElement('span', 'alert-icon', '⚠'));
+function reviewIcons(title) {
+    const found = REVIEW_ICONS.find(row => row[0].test(title));
 
-    item.appendChild(head);
-
-    const body = makeElement('p', '', text);
-
-    item.appendChild(body);
-
-    if (action) {
-        item.appendChild(makeElement('p', 'alert-action', '👉 ' + action));
-    }
-
-    return { item, body };
+    return found ? [found[1], found[2]] : ['shield', 'bulb'];
 }
 
-/* The Fraud Guard's reasons, as one more red box, with the tick the user needs to give to continue. */
+/* How serious a card is: the server's own level for its area, else a fixed one. Empty = no label. */
 
-function fraudBox(index, risk) {
-    const fraud = alertBox(index, 'FRAUD GUARD', 'Please check this payment.', '');
+function reviewLevel(card, guardian) {
+    const title = String(card.title || '').toUpperCase();
+
+    const impact = area => {
+        const found = safeArray(guardian && guardian.impacts).find(i => i.area === area);
+
+        return found && ['HIGH', 'MEDIUM', 'LOW'].includes(found.level) ? found.level : '';
+    };
+
+    if (/LIMIT EXCEEDED/.test(title)) {
+        return 'HIGH';
+    }
+
+    if (/PAYMENT RISK/.test(title)) {
+        return 'MEDIUM';
+    }
+
+    if (/LOAN REPAYMENT RISK/.test(title)) {
+        return impact('Upcoming EMI') || impact('Balance') || 'HIGH';
+    }
+
+    if (/BALANCE RISK/.test(title)) {
+        return impact('Balance') || 'HIGH';
+    }
+
+    if (/SAVINGS GOAL IMPACT/.test(title)) {
+        return impact('Savings goal') || 'MEDIUM';
+    }
+
+    if (/FRAUD/.test(title)) {
+        return 'MEDIUM';
+    }
+
+    if (/SPENDING LIMITS/.test(title)) {
+        return card.warn ? 'MEDIUM' : (card.action ? '' : 'LOW');
+    }
+
+    if (/LOANS AND BILLS|SAVINGS GOAL/.test(title)) {
+        return card.action ? '' : 'LOW';
+    }
+
+    return '';
+}
+
+/* Some cards the server sends without a "what to do". */
+
+function reviewAction(card) {
+    if (card.action) {
+        return card.action;
+    }
+
+    return /PAYMENT RISK/i.test(card.title || '')
+        ? 'Limit this payment or split it into smaller instalments to reduce risk.'
+        : '';
+}
+
+/*
+ * One review card. `level` is HIGH, MEDIUM or LOW (shown as "HIGH RISK" ...) or empty for a plain gold card;
+ * `tone` only changes the colour when the level is empty; `picture` chooses the round icon instead of the one the
+ * title suggests. Returns the card, its text and its "what to do" words, so a later answer (the AI's advice) can
+ * replace them.
+ */
+
+function reviewCard(title, text, action, level, tone, picture) {
+    const kind = level ? level.toLowerCase() : (tone || 'none');
+    const [suggested, strip] = reviewIcons(title);
+    const lead = picture || suggested;
+
+    const item = makeElement('div', 'rc rc-' + kind);
+
+    item.appendChild(makeElement('span', 'rc-bar'));
+
+    const round = makeElement('span', 'rc-icon');
+
+    round.appendChild(icon('i-' + lead));
+    item.appendChild(round);
+
+    const main = makeElement('div', 'rc-main');
+    const head = makeElement('div', 'rc-head');
+
+    head.appendChild(makeElement('span', 'rc-title', title));
+
+    if (level) {
+        head.appendChild(makeElement('span', 'rc-pill', level + ' RISK'));
+    }
+
+    main.appendChild(head);
+
+    const body = makeElement('p', 'rc-text', text);
+
+    main.appendChild(body);
+
+    let actionText = null;
+
+    if (action) {
+        const row = makeElement('div', 'rc-action');
+
+        actionText = makeElement('span', '', action);
+
+        row.appendChild(icon('i-' + strip));
+        row.appendChild(actionText);
+
+        main.appendChild(row);
+    }
+
+    item.appendChild(main);
+
+    return { item, body, main, actionText };
+}
+
+/* The Fraud Guard's reasons, as one more card, with the tick the user needs to give to continue. */
+
+function fraudBox(risk) {
+    const fraud = reviewCard('FRAUD GUARD', 'Please check this payment.', '', 'MEDIUM');
 
     const list = makeElement('ul', 'alert-list');
 
     safeArray(risk.flags).forEach(text => list.appendChild(makeElement('li', '', text)));
 
-    fraud.item.appendChild(list);
+    fraud.main.appendChild(list);
 
     const label = makeElement('label', 'check-row');
 
@@ -2285,23 +2383,26 @@ function fraudBox(index, risk) {
     label.appendChild(tick);
     label.appendChild(document.createTextNode('I know this recipient and want to continue with this payment.'));
 
-    fraud.item.appendChild(label);
+    fraud.main.appendChild(label);
 
     return fraud.item;
 }
 
 /*
- * The same numbered red boxes as the Pay review, for the question box (used by HE): one box for each thing the
- * Guardian found, shown once, then the Fraud Guard's reasons. Returns null when nothing needs a warning.
+ * The same cards as the Pay review, for the question box (used by HE): one card for each thing the Guardian found,
+ * shown once, then the Fraud Guard's reasons. With nothing to warn about, the cards are green instead.
+ * Returns { node, warn }: node is null when there is nothing to show.
  */
 
 function guardianAlertCards(check, risk) {
+    const guardian = (check && check.guardian) || {};
+
     const found = [];
     const seen = new Set();
 
     let decision = null;
 
-    safeArray(check && check.guardian && check.guardian.cards).forEach(card => {
+    safeArray(guardian.cards).forEach(card => {
         const key = card.title + '|' + card.text;
 
         if (card.title === 'YOUR DECISION') {
@@ -2315,34 +2416,39 @@ function guardianAlertCards(check, risk) {
 
     const flags = safeArray(risk && risk.flags);
 
-    if (!found.length && !flags.length) {
-        return null;
-    }
-
     const wrap = makeElement('div', 'ask-cards-list');
+
+    const show = card => wrap.appendChild(
+        reviewCard(card.title, card.text, reviewAction(card), reviewLevel(card, guardian)).item);
+
+    if (!found.length && !flags.length) {
+        /* Nothing to warn about: what is fine, in the same cards but green. */
+
+        reviewExtras(check || {}).filter(card => !card.warn).forEach(show);
+
+        return { node: wrap.children.length ? wrap : null, warn: false };
+    }
 
     wrap.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
 
-    let n = 0;
-
-    found.forEach(card => wrap.appendChild(alertBox(n++, card.title, card.text, card.action).item));
+    found.forEach(show);
 
     if (flags.length) {
-        const fraud = alertBox(n++, 'FRAUD GUARD', 'Please check this payment.', '');
+        const fraud = reviewCard('FRAUD GUARD', 'Please check this payment.', '', 'MEDIUM');
         const list = makeElement('ul', 'alert-list');
 
         flags.forEach(text => list.appendChild(makeElement('li', '', text)));
 
-        fraud.item.appendChild(list);
+        fraud.main.appendChild(list);
         wrap.appendChild(fraud.item);
     }
 
     /* Last, as on the Pay review: the decision. */
 
-    wrap.appendChild(alertBox(n, 'YOUR DECISION',
-        decision ? decision.text : 'Review the payment and decide whether to continue.', '').item);
+    wrap.appendChild(reviewCard('YOUR DECISION',
+        decision ? decision.text : 'Review the payment and decide whether to continue.', '', '').item);
 
-    return wrap;
+    return { node: wrap, warn: true };
 }
 
 /* The server asked for the Fraud Guard to be confirmed after all (it checks again when the order is made). */
@@ -2353,7 +2459,7 @@ function showFraudBox(risk) {
     box.replaceChildren();
 
     if (risk.flagged && !$('riskConfirm')) {
-        box.appendChild(fraudBox(document.querySelectorAll('#reviewGuardian .alert-card').length, risk));
+        box.appendChild(fraudBox(risk));
     }
 }
 
@@ -2414,20 +2520,40 @@ function renderGuardianReview(guardian, extras, risk) {
 
     box.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
 
-    let n = 0;
-
-    items.forEach(card => box.appendChild(alertBox(n++, card.title, card.text, card.action).item));
+    items.forEach(card => box.appendChild(
+        reviewCard(card.title, card.text, reviewAction(card), reviewLevel(card, guardian)).item));
 
     if (flagged) {
-        box.appendChild(fraudBox(n++, risk));
+        box.appendChild(fraudBox(risk));
     }
 
-    const last = alertBox(n, 'YOUR DECISION',
-        decision ? decision.text : 'Review the payment and decide whether to continue.', '');
+    const last = reviewCard('YOUR DECISION',
+        decision ? decision.text : 'Review the payment and decide whether to continue.', '', '');
 
     box.appendChild(last.item);
 
     return last.body;
+}
+
+/* What the limits say, and what is fine, for the cards below the Guardian's own findings. */
+
+function reviewExtras(check) {
+    const lines = budgetLines(check);
+
+    const extras = [];
+
+    if (!safeArray(check.periods).length) {
+        extras.push({
+            title: 'SPENDING LIMITS',
+            text: 'No spending limit is set, so Monetra cannot check this payment against a budget.',
+            action: 'Set one in Spending.'
+        });
+
+    } else if (lines.length) {
+        extras.push({ title: 'SPENDING LIMITS', text: lines.map(l => l.text).join(' '), warn: lines.some(l => l.warn) });
+    }
+
+    return extras;
 }
 
 async function startReview() {
@@ -2462,24 +2588,10 @@ async function startReview() {
     draft.resolvedName = risk.recipientName;
 
     const guardian = check.guardian || {};
-    const lines = budgetLines(check);
 
-    /* What the limits say, and what is fine. With a warning these become red boxes too; without one, green notes. */
+    /* What the limits say, and what is fine. With a warning these become cards too; without one, green cards. */
 
-    const extras = [];
-
-    if (!safeArray(check.periods).length) {
-        extras.push({
-            title: 'SPENDING LIMITS',
-            text: 'No spending limit is set, so Monetra cannot check this payment against a budget.',
-            action: 'Set one in Spending.'
-        });
-
-    } else if (lines.length) {
-        extras.push({ title: 'SPENDING LIMITS', text: lines.map(l => l.text).join(' '), warn: lines.some(l => l.warn) });
-    }
-
-    safeArray(guardian.notes).forEach(text => extras.push({ title: 'GOOD TO KNOW', text }));
+    const extras = reviewExtras(check);
 
     $('paymentForm').classList.add('hidden');
     $('reviewPanel').classList.remove('hidden');
@@ -2521,18 +2633,14 @@ async function startReview() {
         summary.appendChild(statBox('Left today after this', money(daily.remainingAfter), 'var(--green)'));
     }
 
-    /* Without a warning: plain notes. */
+    /* Without a warning: the same cards, in green. */
 
     const rules = $('reviewRules');
 
     rules.replaceChildren();
 
     if (!warn) {
-        extras.forEach(e => rules.appendChild(makeElement(
-            'div',
-            'alert-box ' + (e.title === 'GOOD TO KNOW' || e.action ? '' : 'good-box'),
-            (e.title === 'GOOD TO KNOW' ? '🛡️ ' : e.action ? 'ℹ️ ' : '✅ ') + e.text + (e.action ? ' ' + e.action : '')
-        )));
+        extras.forEach(e => rules.appendChild(reviewCard(e.title, e.text, e.action, reviewLevel(e, guardian)).item));
     }
 
     requestAiAdvice(decisionText, run);
@@ -2543,7 +2651,7 @@ async function startReview() {
 async function requestAiAdvice(decisionText, run) {
     const box = $('reviewAi');
 
-    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its advice...');
+    const waiting = makeElement('div', 'footer-note', 'The Guardian AI is writing its advice...');
 
     box.replaceChildren(waiting);
 
@@ -2560,7 +2668,7 @@ async function requestAiAdvice(decisionText, run) {
             return;
         }
 
-        const advice = '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+        const advice = String(result.advice || '').slice(0, 500);
 
         if (decisionText) {
             decisionText.textContent = advice;
@@ -2568,7 +2676,9 @@ async function requestAiAdvice(decisionText, run) {
             box.replaceChildren();
 
         } else {
-            box.replaceChildren(makeElement('div', 'alert-box good-box', advice));
+            /* Nothing to warn about: the advice is one more green card. */
+
+            box.replaceChildren(reviewCard('GUARDIAN AI', advice, '', '', 'low').item);
         }
 
     } catch (error) {
@@ -3058,7 +3168,7 @@ function renderFraud() {
         left.appendChild(makeElement('div', 'sub', displayDateTime(p.createdAt)));
 
         String(p.riskFlags).split(' | ').forEach(text => {
-            left.appendChild(makeElement('div', 'sub warn', '⚠️ ' + text));
+            left.appendChild(makeElement('div', 'sub warn', text));
         });
 
         row.appendChild(left);
@@ -3272,9 +3382,9 @@ function renderSpending() {
     $('statLeft').textContent = limit > 0 ? money(Math.max(0, limit - spent)) : 'Not set';
 
     const status = $('statStatus');
-    const alertBox = $('spendingAlert');
+    const spendingBox = $('spendingAlert');
 
-    alertBox.replaceChildren();
+    spendingBox.replaceChildren();
 
     if (!limit) {
         status.textContent = 'Not set';
@@ -3286,15 +3396,14 @@ function renderSpending() {
         status.textContent = 'Over limit';
         status.style.color = 'var(--red)';
 
-        alertBox.appendChild(makeElement('div', 'alert-box bad-box',
-            '🚨 You are ' + money(spent - limit) + ' over your ' + period + ' limit of ' + money(limit) + '.'));
+        spendingBox.appendChild(reviewCard(period.toUpperCase() + ' LIMIT EXCEEDED',
+            'You are ' + money(spent - limit) + ' over your ' + period + ' limit of ' + money(limit) + '.', '', 'HIGH').item);
 
     } else {
+        /* Within the limit: the figures above already say so ("On track"), so there is no extra line. */
+
         status.textContent = (spent > limit * 0.8 ? 'Almost there' : 'On track') + ' • ' + Math.round(spent / limit * 100) + '% used';
         status.style.color = spent > limit * 0.8 ? 'var(--amber)' : 'var(--green)';
-
-        alertBox.appendChild(makeElement('div', 'alert-box good-box',
-            '✅ You are within your ' + period + ' limit.'));
     }
 }
 
@@ -3486,19 +3595,27 @@ $('forecastExplain').addEventListener('click', async function() {
 
     button.disabled = true;
 
-    box.replaceChildren(makeElement('div', 'empty-state', '🛡️ The Guardian is thinking...'));
+    box.replaceChildren(makeElement('div', 'empty-state', 'The Guardian is thinking...'));
+
+    /* The card takes the colour of the forecast: over budget, close to it, or on track. */
+
+    const forecastLevel = () => forecast && forecast.status === 'over' ? 'HIGH'
+        : forecast && forecast.status === 'watch' ? 'MEDIUM' : '';
+
+    const forecastTone = () => forecast && forecast.status === 'on_track' ? 'low' : 'none';
 
     try {
         const result = await postJson('/api/guardian/forecast/explain', {}, 90000);
 
-        box.replaceChildren(makeElement('div', 'alert-box', '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 700)));
+        box.replaceChildren(reviewCard('GUARDIAN AI', String(result.advice || '').slice(0, 700), '',
+            forecastLevel(), forecastTone(), 'shield').item);
 
     } catch (error) {
         /* Say why: the AI could not be reached, or its answer did not match the figures and was not shown. */
         const mismatch = /did not match/i.test(String(error && error.message));
 
         box.replaceChildren(
-            makeElement('div', 'alert-box', '🛡️ ' + forecastText(forecast)),
+            reviewCard('FORECAST', forecastText(forecast), '', forecastLevel(), forecastTone(), 'trend').item,
             makeElement('div', 'footer-note', mismatch
                 ? 'The AI answer did not match your figures, so Monetra\'s own check is shown.'
                 : 'AI is not available right now: this uses Monetra\'s rules.')
@@ -3714,8 +3831,8 @@ function renderLoanPlan() {
 
     const plan = emiPlan(monthly);
 
-    box.appendChild(makeElement('div', 'alert-box', '💰 To cover your EMIs, you must save ' + money(plan.daily) +
-        ' a day, ' + money(plan.monthly) + ' a month or ' + money(plan.yearly) + ' a year.'));
+    box.appendChild(reviewCard('EMI SAVING PLAN', 'To cover your EMIs, you must save ' + money(plan.daily) +
+        ' a day, ' + money(plan.monthly) + ' a month or ' + money(plan.yearly) + ' a year.', '', '', 'none', 'bank').item);
 
     const period = ['monthly', 'daily', 'yearly'].find(p => Number(records.limits[p]) > 0);
 
@@ -3726,12 +3843,12 @@ function renderLoanPlan() {
     const limit = Number(records.limits[period]);
     const need = plan[period];
 
-    box.appendChild(need > limit
-        ? makeElement('div', 'alert-box warn-box', '⚠️ Your EMIs need ' + money(need) +
+    box.appendChild((need > limit
+        ? reviewCard('EMIs ABOVE YOUR LIMIT', 'Your EMIs need ' + money(need) +
             ' every ' + period.replace('ly', '').replace('dai', 'day') + ', which is more than your ' +
-            period + ' spending limit of ' + money(limit) + '.')
-        : makeElement('div', 'alert-box', 'Your EMIs take ' + money(need) + ' of your ' + money(limit) +
-            ' ' + period + ' spending limit (' + Math.round(need / limit * 100) + '%).'));
+            period + ' spending limit of ' + money(limit) + '.', '', 'MEDIUM', '', 'wallet')
+        : reviewCard('EMIs AND YOUR LIMIT', 'Your EMIs take ' + money(need) + ' of your ' + money(limit) +
+            ' ' + period + ' spending limit (' + Math.round(need / limit * 100) + '%).', '', 'LOW', '', 'wallet')).item);
 }
 
 /* Loan Guardian: totals, the risk before the next income, the EMI calendar and next month's forecast. */
@@ -3769,11 +3886,14 @@ function renderLoanGuardian() {
             statBox('Reserved for EMIs', money(data.reserved))
         );
 
-        $('loanRiskText').appendChild(makeElement(
-            'div',
-            'alert-box ' + (data.status === 'HIGH' ? 'bad-box' : (data.status === 'MEDIUM' ? 'warn-box' : '')),
-            (data.status === 'HIGH' ? '🚨 ' : (data.status === 'MEDIUM' ? '⚠️ ' : '🛡️ ')) + data.text
-        ));
+        /* A warning is a card; when all is well the risk label above says so; a missing balance is a plain hint. */
+
+        if (data.status === 'HIGH' || data.status === 'MEDIUM') {
+            $('loanRiskText').appendChild(reviewCard('LOAN REPAYMENT RISK', data.text, '', data.status).item);
+
+        } else if (data.status === 'UNKNOWN') {
+            $('loanRiskText').appendChild(makeElement('p', 'hint', data.text));
+        }
 
         const rows = safeArray(data.calendar);
 
@@ -3835,11 +3955,14 @@ function renderLoanGuardian() {
         box.appendChild(grid);
     }
 
-    box.appendChild(makeElement(
-        'div',
-        'alert-box ' + (f.known && Number(f.projectedRemaining) < 0 ? 'bad-box' : ''),
-        (f.known ? (Number(f.projectedRemaining) < 0 ? '🚨 ' : '🛡️ ') : 'ℹ️ ') + f.text
-    ));
+    /* The figures above already say it when next month is fine; a card is only added for a warning, a plain hint for a missing income. */
+
+    if (!f.known) {
+        box.appendChild(makeElement('p', 'hint', f.text));
+
+    } else if (Number(f.projectedRemaining) < 0) {
+        box.appendChild(reviewCard('NEXT MONTH', f.text, '', 'HIGH', '', 'cal').item);
+    }
 }
 
 function updateLoans() {
@@ -4126,7 +4249,7 @@ function updateGoals() {
 
         const head = makeElement('div', 'goal-head');
 
-        head.appendChild(makeElement('strong', '', '🎯 ' + goal.name));
+        head.appendChild(makeElement('strong', '', goal.name));
 
         if (figures && !reached) {
             const labels = { BEHIND: 'Behind plan', ON_TRACK: 'On track', DATE_PASSED: 'Date passed', NO_DATE: 'No date' };
@@ -4170,9 +4293,18 @@ function updateGoals() {
                     new Date(figures.estimatedCompletion + 'T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) + '.'));
             }
 
+            /* Behind plan or past its date: a card; any other advice is a plain line. */
+
             if (figures && figures.advice) {
-                info.appendChild(makeElement('div',
-                    'alert-box ' + (figures.status === 'BEHIND' ? 'warn-box' : ''), '⚠️ ' + figures.advice));
+                if (figures.status === 'BEHIND') {
+                    info.appendChild(reviewCard('BEHIND YOUR PLAN', figures.advice, '', 'HIGH', '', 'target').item);
+
+                } else if (figures.status === 'DATE_PASSED') {
+                    info.appendChild(reviewCard('DATE PASSED', figures.advice, '', 'MEDIUM', '', 'cal').item);
+
+                } else {
+                    info.appendChild(makeElement('div', 'sub', figures.advice));
+                }
             }
         }
 
@@ -4224,44 +4356,6 @@ function updateGoals() {
    FINANCIAL AWARENESS CARDS (Home) AND "MY MONEY"
 ================================ */
 
-/*
- * The number inside the Daily Budget circle. Up to 999 it is shown exactly, with its per cent sign ("45%",
- * "100%", "250%"). From 1,000 up it is shortened the Indian way with a plus, meaning "at least this much":
- * "1k+", "11k+", "1L+", "2L+", "1Cr+". That always fits. The exact figure, with Indian grouping
- * ("1,11,011%"), is in the circle's tooltip and its accessible name, and the exact amount is written
- * next to the circle ("₹1,10,911.00 over").
- */
-
-function compactIndian(n) {
-    const units = [[1e7, 'Cr'], [1e5, 'L'], [1e3, 'k']];
-
-    for (let i = 0; i < units.length; i++) {
-        if (n >= units[i][0]) {
-            /* Whole units, rounded down, so "+" is always true. From 99 crore up it just says 99Cr+. */
-            return Math.min(99, Math.floor(n / units[i][0])) + units[i][1] + '+';
-        }
-    }
-
-    return String(n);
-}
-
-function ringText(percent) {
-    const n = Math.round(Number(percent) || 0);
-
-    return n < 1000 ? n + '%' : compactIndian(n);
-}
-
-function setRing(ring, text, exact) {
-    ring.firstElementChild.textContent = text;
-
-    /* The font size follows the text's length (see .ring in the stylesheet). */
-    ring.dataset.len = String(Math.min(text.length, 6));
-
-    ring.title = exact;
-    ring.setAttribute('role', 'img');
-    ring.setAttribute('aria-label', exact);
-}
-
 function setChip(id, text, level) {
     const chip = $(id);
 
@@ -4274,35 +4368,23 @@ function setChip(id, text, level) {
 function renderAwareness() {
     const o = overview || {};
 
-    /* Card 1: daily budget. The ring shows how much of today's limit is used. */
+    /* Card 1: daily budget: the label and the amount left (or over) say it, with no ring. */
 
     const daily = o.daily;
-    const ring = $('awareDailyRing');
 
     if (daily && daily.limitSet) {
         setChip('awareDailyChip', daily.statusLabel, daily.status);
 
         const over = Number(daily.overBy) > 0;
-        const used = Math.max(0, Number(daily.percentUsed) || 0);
 
         $('awareDailyMain').textContent = over ? money(daily.overBy) + ' over' : money(daily.remaining) + ' left';
         $('awareDailyMain').className = 'aware-main ' + (over ? 'bad' : 'good');
-
-        ring.style.setProperty('--p', Math.min(100, used));
-        ring.classList.toggle('over', over);
-
-        setRing(ring, ringText(used), 'Used today: ' + used.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '% of your daily limit');
 
     } else {
         setChip('awareDailyChip', 'No limit set', 'UNKNOWN');
 
         $('awareDailyMain').textContent = 'Set a limit';
         $('awareDailyMain').className = 'aware-main';
-
-        ring.style.setProperty('--p', 0);
-        ring.classList.remove('over');
-
-        setRing(ring, '—', 'No daily limit set');
     }
 
     $('awareDailySub').textContent = '';
@@ -5885,7 +5967,8 @@ async function startHePaypalPayment(amount, description, label) {
 
     /* Each thing the Guardian found is its own red box, like on the Pay review. */
 
-    const warnings = guardianAlertCards(check, risk);
+    const review = guardianAlertCards(check, risk);
+    const warnings = review.warn;
 
     const question = 'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings ? ' anyway?' : '?');
 
@@ -5894,7 +5977,7 @@ async function startHePaypalPayment(amount, description, label) {
      * close the box and nothing is started: Go Back, Adjust Amount (back to the amount) or Review Budget.
      */
 
-    const answer = await askConfirm(question, warnings ? 'Continue Anyway' : 'Continue to PayPal', 'Go Back', warnings, true);
+    const answer = await askConfirm(question, warnings ? 'Continue Anyway' : 'Continue to PayPal', 'Go Back', review.node, true);
 
     if (answer === 'adjust') {
         $('heAmount').focus();
@@ -7017,7 +7100,7 @@ function renderPlan(plan, run) {
     buttons.appendChild(change);
 
     if (!plan.ready) {
-        box.appendChild(makeElement('div', 'alert-box', 'ℹ️ ' + safeArray(plan.lines).join(' ')));
+        box.appendChild(makeElement('p', 'hint', safeArray(plan.lines).join(' ')));
 
         const open = makeElement('button', 'btn-gold', 'Open My money');
 
@@ -7064,24 +7147,25 @@ function renderPlan(plan, run) {
 
     box.appendChild(stats);
 
-    /* Why not today, in a red box, with what to do. The AI's advice replaces that line when it comes. */
+    /* Why not today, as a card, with what to do. The AI's advice replaces that line when it comes. */
 
     let adviceLine;
+    let adviceCard;
 
     if (plan.warning) {
         const why = plan.warning.replace(/^Buying it today is NOT safe:\s*/, '');
 
-        const red = alertBox(0, 'WHY NOT TODAY', why.charAt(0).toUpperCase() + why.slice(1), plan.recommendation);
+        adviceCard = reviewCard('WHY NOT TODAY', why.charAt(0).toUpperCase() + why.slice(1), plan.recommendation, 'HIGH');
 
-        box.appendChild(red.item);
-
-        adviceLine = red.item.querySelector('.alert-action');
+        adviceLine = adviceCard.actionText || adviceCard.body;
 
     } else {
-        adviceLine = makeElement('div', 'alert-box good-box', '✅ ' + plan.recommendation);
+        adviceCard = reviewCard('SAFE TO BUY', plan.recommendation, '', '', 'low', 'shield');
 
-        box.appendChild(adviceLine);
+        adviceLine = adviceCard.body;
     }
+
+    box.appendChild(adviceCard.item);
 
     const notes = planNotes(plan);
 
@@ -7109,13 +7193,13 @@ function renderPlan(plan, run) {
 
     renderPlanTracking();
 
-    explainPlan(plan, run, adviceLine);
+    explainPlan(plan, run, adviceLine, adviceCard.item);
 }
 
-async function explainPlan(plan, run, adviceLine) {
-    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its advice...');
+async function explainPlan(plan, run, adviceLine, card) {
+    const waiting = makeElement('div', 'footer-note', 'The Guardian AI is writing its advice...');
 
-    adviceLine.after(waiting);
+    card.after(waiting);
 
     try {
         const result = await postJson('/api/guardian/buy-plan/explain', plan.request, 90000);
@@ -7124,7 +7208,7 @@ async function explainPlan(plan, run, adviceLine) {
             return;
         }
 
-        adviceLine.textContent = (plan.warning ? '👉 ' : '') + '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+        adviceLine.textContent = String(result.advice || '').slice(0, 500);
 
     } catch (error) {
         /* No AI advice: the plan above is complete without it. */
@@ -7333,27 +7417,32 @@ function renderScam(result, text, run) {
     box.appendChild(makeElement('div', 'plan-status ' + (result.level === 'HIGH' ? 'bad' : risky ? 'warn' : 'good'),
         (risky ? '⚠️ ' : '✅ ') + 'Risk level: ' + result.level));
 
-    /* One numbered red box per reason, then what to do. The AI's explanation goes in that last box. */
+    /* One card per reason, then what to do. The AI's explanation goes in that last card. */
 
     let adviceText;
 
     if (risky) {
-        let n = 0;
+        /* A weak sign is still part of the warning, so it is a plain gold card, not a green "low risk" one. */
 
         safeArray(result.reasons).forEach(reason => {
-            box.appendChild(alertBox(n++, SCAM_TITLES[reason.rule] || 'WARNING SIGN', reason.text, '').item);
+            const level = reason.level === 'LOW' ? ''
+                : ['HIGH', 'MEDIUM'].includes(reason.level) ? reason.level : result.level;
+
+            box.appendChild(reviewCard(SCAM_TITLES[reason.rule] || 'WARNING SIGN', reason.text, '', level, '', 'warn').item);
         });
 
-        const todo = alertBox(n, 'WHAT TO DO', result.recommendation, '');
+        const todo = reviewCard('WHAT TO DO', result.recommendation, '', '', 'none', 'shield');
 
         box.appendChild(todo.item);
 
         adviceText = todo.body;
 
     } else {
-        adviceText = makeElement('div', 'alert-box good-box', result.reason + ' ' + result.recommendation);
+        const fine = reviewCard('NO STRONG WARNING SIGNS', result.reason + ' ' + result.recommendation, '', '', 'low', 'shield');
 
-        box.appendChild(adviceText);
+        adviceText = fine.body;
+
+        box.appendChild(fine.item);
     }
 
     if (safeArray(result.phrases).length) {
@@ -7390,15 +7479,16 @@ function renderScam(result, text, run) {
 }
 
 async function explainScam(text, run, adviceText) {
-    const waiting = makeElement('div', 'footer-note', '🛡️ The Guardian AI is writing its explanation...');
+    const waiting = makeElement('div', 'footer-note', 'The Guardian AI is writing its explanation...');
 
-    adviceText.after(waiting);
+    /* The note goes after the card, not inside it. */
+    adviceText.closest('.rc').after(waiting);
 
     try {
         const result = await postJson('/api/guardian/scam/explain', { message: text }, 90000);
 
         if (run === scamRun) {
-            adviceText.textContent = '🛡️ Guardian AI: ' + String(result.advice || '').slice(0, 500);
+            adviceText.textContent = String(result.advice || '').slice(0, 500);
         }
 
     } catch (error) {

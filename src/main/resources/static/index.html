@@ -46,6 +46,9 @@
         <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></symbol>
         <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 7.5h7M8.5 10.5h7M9 7.5c3.6 0 3.6 6 0 6l5 4"/></symbol>
         <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+        <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5L2.8 19.5h18.4z"/><path d="M12 9.8v4.6M12 17.1v.01"/></symbol>
+        <symbol id="i-card" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></symbol>
+        <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2h5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></symbol>
         <symbol id="i-cardplus" viewBox="0 0 64 48"><rect x="2" y="12" width="50" height="33" rx="5"/><rect x="8" y="19" width="11" height="8" rx="2"/><path d="M8 37h5M17 37h5M26 37h5M35 37h5M54 2v12M48 8h12"/></symbol>
     </defs>
 </svg>
@@ -282,7 +285,6 @@
                         <span class="row-sub"><span class="aware-main" id="awareDailyMain">Set a limit</span><span class="aware-sub" id="awareDailySub"></span></span>
                     </span>
                     <span class="risk-chip" id="awareDailyChip">No limit set</span>
-                    <span class="ring" id="awareDailyRing" style="--p:0"><b>—</b></span>
                     <span class="row-chev" aria-hidden="true">›</span>
                 </button>
 
@@ -496,10 +498,6 @@
                     <div id="reviewFraud" class="review-notes"></div>
 
                     <div id="reviewAi" class="review-notes"></div>
-
-                    <p class="guardian-disclaimer">
-                        ⚠️ Nothing is charged until you approve the payment through PayPal and Monetra's server confirms it.
-                    </p>
 
                     <div class="review-actions">
                         <div id="reviewMessage" class="message" role="status" aria-live="polite"></div>
