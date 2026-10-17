@@ -361,7 +361,11 @@ async function apiJson(url, options, timeoutMs) {
     const timer = setTimeout(() => controller.abort(), timeoutMs || 20000);
 
     try {
-        const response = await fetch(url, { ...(options || {}), signal: controller.signal });
+        const response = await fetch(url, {
+            ...(options || {}),
+            headers: withUser((options || {}).headers),
+            signal: controller.signal
+        });
 
         const text = await response.text();
 
@@ -375,7 +379,12 @@ async function apiJson(url, options, timeoutMs) {
 
         if (!response.ok) {
             if (response.status === 401 && me.email) {
+                /* Not an instant sign-out: sessionExpired() first asks the server whether the session is really gone. */
                 sessionExpired();
+            }
+
+            if (response.status === 409 && data && data.accountChanged) {
+                accountChanged();
             }
 
             const reason = (data && (data.error || data.message)) ||
@@ -402,6 +411,36 @@ async function apiJson(url, options, timeoutMs) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+/*
+ * Says who this page believes is signed in. The browser shares one login cookie between its tabs, so if
+ * someone signs in as another person in another tab, the server refuses this page's requests (409) instead
+ * of letting it act, or save its records, as that other person.
+ */
+
+function withUser(headers) {
+    const out = { ...(headers || {}) };
+
+    if (me.email) {
+        out['X-Monetra-User'] = me.email;
+    }
+
+    return out;
+}
+
+let reloadingForAccount = false;
+
+function accountChanged() {
+    if (reloadingForAccount) {
+        return;
+    }
+
+    reloadingForAccount = true;
+
+    showToast('You signed in as a different person in another tab. This page will reload.', 4000);
+
+    setTimeout(() => location.reload(), 1800);
 }
 
 function postJson(url, body, timeoutMs) {
@@ -706,6 +745,9 @@ $('loginForm').addEventListener('submit', async function(event) {
 
             await openDashboard(profile);
 
+            /* A PayPal payment that could not be checked while nobody was signed in is checked now. */
+            await resumePaypalReturn();
+
         } else {
             message.textContent = result;
         }
@@ -732,8 +774,39 @@ function rememberEmail(email) {
 
 $('logoutButton').addEventListener('click', () => closeDashboard());
 
-function sessionExpired() {
-    closeDashboard('Your session ended. Please sign in again.');
+let checkingSession = false;
+
+/*
+ * A request was answered 401. That alone does not end the session: one stray answer (a request that raced
+ * another, a slow server) must never sign the person out. So the server is asked once. Only its own "not
+ * signed in" ends the session here; an answer that it is fine, or no answer at all, changes nothing. When
+ * the session really is gone the server already ended it, so no second logout request is sent.
+ */
+
+async function sessionExpired() {
+    if (checkingSession || !me.email) {
+        return;
+    }
+
+    checkingSession = true;
+
+    try {
+        let status = 0;
+
+        try {
+            status = (await fetch('/api/auth/me', { cache: 'no-store' })).status;
+
+        } catch (error) {
+            return;    /* the server cannot be reached: that is not a sign-out */
+        }
+
+        if (status === 401 && me.email) {
+            closeDashboard('Your session ended. Please sign in again.', true);
+        }
+
+    } finally {
+        checkingSession = false;
+    }
 }
 
 async function openDashboard(profile) {
@@ -777,12 +850,14 @@ async function openDashboard(profile) {
     startBankUpdates();
 }
 
-function closeDashboard(note) {
+/* serverAlreadyEnded: the server itself said "not signed in", so there is nothing to log out of. */
+
+function closeDashboard(note, serverAlreadyEnded) {
     viewHistory = [];
     guardianScore = null;
     scoreZoneSent = false;
 
-    if (me.email) {
+    if (me.email && !serverAlreadyEnded) {
         fetch('/api/auth/logout', { method: 'POST' }).catch(function() {
             /* The session also expires on its own. */
         });
@@ -807,7 +882,9 @@ function closeDashboard(note) {
     $('loginEmail').value = me.email;
 
     if (note) {
-        $('loginMessage').textContent = note;
+        $('loginMessage').textContent = hasPendingReturn()
+            ? 'Your session ended. Sign in again and Monetra will finish checking your PayPal payment.'
+            : note;
     }
 
     me = { email: '', name: '', phone: '', paypalEmail: '' };
@@ -2608,6 +2685,29 @@ function showPaymentResult(text, kind, boxId) {
     box.textContent = text;
 }
 
+/*
+ * Asks the server to confirm a payment PayPal says was approved. The server confirms each payment once (a
+ * repeat gets the stored result), so when the answer is only slow or lost, one more try is safe. When the
+ * server DID answer, whatever it said is believed and shown as it is.
+ */
+
+async function confirmPayment(token) {
+    const url = '/api/payments/capture/' + encodeURIComponent(token);
+
+    try {
+        return await postJson(url, {}, 60000);
+
+    } catch (error) {
+        if (error.status) {
+            throw error;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        return postJson(url, {}, 60000);
+    }
+}
+
 async function handlePaypalReturn(params) {
     const flow = params.get('paypal');
     const ref = params.get('ref') || '';
@@ -2637,7 +2737,7 @@ async function handlePaypalReturn(params) {
             show('Payment cancelled. No money was taken.', 'bad-box');
 
         } else if (flow === 'return' && token) {
-            const payment = await postJson('/api/payments/capture/' + encodeURIComponent(token), {}, 30000);
+            const payment = await confirmPayment(token);
 
             he = !!payment.heType;
 
@@ -2665,11 +2765,20 @@ async function handlePaypalReturn(params) {
         }
 
     } catch (error) {
-        show(
-            'Monetra could not confirm this payment: ' + error.message +
-            ' Open Transactions and press Refresh to check it again.',
-            'bad-box'
-        );
+        if (error.status === 401) {
+            /* The session is gone, not the payment: keep the details and finish the check after sign-in. */
+
+            savePendingReturn(params);
+
+            show('Your session ended before Monetra could confirm this payment. Sign in again and it will be checked then.', 'bad-box');
+
+        } else {
+            show(
+                'Monetra could not confirm this payment: ' + error.message +
+                ' Open Transactions and press Refresh to check it again.',
+                'bad-box'
+            );
+        }
     }
 
     if (he) {
@@ -6095,6 +6204,8 @@ function renderScore() {
     $('scoreValue').textContent = known ? s.score : '—';
     $('scoreOutOf').textContent = (known ? s.score : '—') + '/100';
 
+    renderScoreLevel(s, known);
+
     /* Only when there is no score: what to add to get one. */
 
     $('scoreConfidenceText').textContent = s && !known ? s.confidenceText || '' : '';
@@ -6104,6 +6215,67 @@ function renderScore() {
     renderDayBadges();
     renderWeekBadges();
     renderScoreTips();
+}
+
+const SCORE_LEVEL_IDS = ['BEGINNER', 'BUILDER', 'PROTECTOR', 'CHAMPION', 'ELITE'];
+
+/*
+ * Where the score stands: the shield looks like the level, the line under it names the level and the points
+ * to the next one, and the meter puts the score next to all five levels. The server decides every number
+ * (the level, the points, the five levels and their minimum scores); the page only draws them.
+ */
+
+function renderScoreLevel(s, known) {
+    const shield = document.querySelector('.score-shield');
+
+    SCORE_LEVEL_IDS.forEach(id => shield.classList.remove('lvl-' + id));
+
+    $('scoreLevel').classList.toggle('hidden', !known);
+
+    if (!known) {
+        return;
+    }
+
+    const level = s.level || null;
+    const next = s.nextLevel || null;
+    const levels = safeArray(s.badges);
+    const score = Math.max(0, Math.min(100, Number(s.score) || 0));
+
+    if (level) {
+        shield.classList.add('lvl-' + level.id);
+    }
+
+    $('scoreLevelName').textContent = level ? level.title : '';
+
+    $('scoreNextText').textContent = next
+        ? next.pointsNeeded + (next.pointsNeeded === 1 ? ' more point' : ' more points') + ' to reach ' + next.title
+        : 'The highest level. Keep it up.';
+
+    const meter = $('scoreMeter');
+    const marks = $('scoreMarks');
+
+    meter.querySelectorAll('b').forEach(tick => tick.remove());
+    marks.replaceChildren();
+
+    $('scoreMeterFill').style.width = score + '%';
+
+    levels.forEach(l => {
+        if (l.min > 0) {
+            const tick = document.createElement('b');
+
+            tick.style.left = l.min + '%';
+            meter.appendChild(tick);
+        }
+
+        const mark = makeElement('span', level && l.id === level.id ? 'current' : '', String(l.min));
+
+        mark.style.left = l.min + '%';
+        mark.title = l.title;
+        marks.appendChild(mark);
+    });
+
+    meter.setAttribute('aria-label', 'Score ' + score + ' out of 100. ' +
+        levels.map(l => l.title + ' starts at ' + l.min).join(', ') + '.');
 }
 
 function renderScoreParts() {
@@ -6531,7 +6703,103 @@ applyPrefs();
    Also handles the return from PayPal.
 ================================ */
 
+/*
+ * A PayPal payment that could not be confirmed because nobody was signed in (the session ended, or the server
+ * did not answer). The page keeps the order details for this tab only, and finishes the check after sign-in.
+ */
+
+const PENDING_RETURN_KEY = 'monetraPendingReturn';
+
+function savePendingReturn(params) {
+    try {
+        sessionStorage.setItem(PENDING_RETURN_KEY, JSON.stringify({ query: params.toString(), at: Date.now() }));
+    } catch (error) {
+        /* Storage unavailable: the Transactions screen can still check the payment. */
+    }
+}
+
+function hasPendingReturn() {
+    try {
+        return !!sessionStorage.getItem(PENDING_RETURN_KEY);
+    } catch (error) {
+        return false;
+    }
+}
+
+/* The saved details, once; or null when there are none or they are older than half an hour. */
+
+function takePendingReturn() {
+    try {
+        const raw = sessionStorage.getItem(PENDING_RETURN_KEY);
+
+        sessionStorage.removeItem(PENDING_RETURN_KEY);
+
+        const saved = raw ? JSON.parse(raw) : null;
+
+        return saved && Date.now() - Number(saved.at) < 30 * 60 * 1000 ? new URLSearchParams(saved.query) : null;
+
+    } catch (error) {
+        return null;
+    }
+}
+
+async function resumePaypalReturn() {
+    const params = takePendingReturn();
+
+    if (params) {
+        await handlePaypalReturn(params);
+    }
+}
+
+/*
+ * Who is signed in, asked of the server. Only the server's own "401 Not logged in" means nobody is: a slow
+ * answer, a timeout or a server error is tried again and never taken as a sign-out. Gives null when nobody is
+ * signed in, the profile when someone is, and throws when the server never answered.
+ */
+
+async function checkSession(onWait) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000);
+
+        try {
+            const response = await fetch('/api/auth/me', { cache: 'no-store', signal: controller.signal });
+
+            if (response.status === 401) {
+                return null;
+            }
+
+            if (response.ok) {
+                return await response.json();
+            }
+
+        } catch (error) {
+            /* No answer in time, or no connection: try again. */
+
+        } finally {
+            clearTimeout(timer);
+        }
+
+        if (onWait) {
+            onWait(attempt);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+    }
+
+    throw new Error('The server did not answer.');
+}
+
+/* While the session is being checked the page shows a short message, never the sign-in form. */
+
+function showSessionCheck(text, retry) {
+    $('sessionCheckText').textContent = text;
+    $('sessionRetry').classList.toggle('hidden', !retry);
+}
+
 async function init() {
+    document.body.classList.add('session-check');
+
     showPage('loginPage');
 
     try {
@@ -6553,16 +6821,26 @@ async function init() {
     /* Back from Setu's consent screens. */
     const bankReturn = params.get('bank') === 'return';
 
+    showSessionCheck(returning ? 'Checking your PayPal payment...' : 'Opening Monetra...', false);
+
     /* The server session tells us who is logged in, even after a refresh. */
 
     let profile = null;
 
     try {
-        profile = await apiJson('/api/auth/me', {}, 8000);
+        profile = await checkSession(() => showSessionCheck(
+            returning ? 'Still checking your PayPal payment. The server is slow to answer...'
+                : 'The server is slow to answer. Still trying...', false));
 
     } catch (error) {
-        profile = null;
+        /* The server never answered. The PayPal details stay in the address, so reloading tries again. */
+
+        showSessionCheck('Monetra cannot reach the server right now. You are not signed out. Please try again in a moment.', true);
+
+        return;
     }
+
+    document.body.classList.remove('session-check');
 
     if (returning || bankReturn) {
         /* Remove the PayPal or Setu parameters so a refresh cannot repeat the request. */
@@ -6572,7 +6850,11 @@ async function init() {
 
     if (!profile || !profile.email) {
         if (returning) {
-            $('loginMessage').textContent = 'Sign in again to see the result of your PayPal payment.';
+            /* Nobody is signed in: keep the details, and finish the check after sign-in. */
+
+            savePendingReturn(params);
+
+            $('loginMessage').textContent = 'Sign in to finish checking your PayPal payment.';
         }
 
         return;

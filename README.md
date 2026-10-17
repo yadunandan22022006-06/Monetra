@@ -180,6 +180,10 @@ The chat needs a model that supports **tool calling**. If a small model answers 
 - **Money in saved records is checked on the server:** limits, expense, income, savings, loan, goal and profile amounts must be numbers from 0 to 1,000,000,000, and a payment of nothing, a negative or text amount, an unknown payment method or a payment to yourself is refused with a clear message.
 - The login cookie is `HttpOnly` and `SameSite=Lax`; set `MONETRA_COOKIE_SECURE=true` when the site is served over https so it is never sent over plain http.
 - A PayPal webhook is accepted only when `PAYPAL_WEBHOOK_ID` is set and PayPal's signature checks out.
+- **Paying never signs you out.** Creating, approving, cancelling or refreshing a payment does not touch the session. Only a `POST` to `/api/auth/logout` (the Log Out button) ends it, so no link or page load can. The page treats a single `401` as a question, not an answer: it asks the server who is signed in and only signs you out when the server says nobody is. A slow or missing answer is never taken as "signed out".
+- **Coming back from PayPal while the server is slow** shows "Checking your PayPal payment..." instead of the sign-in form. If your session really has ended, the page keeps the order details (in that browser tab only) and finishes checking the payment right after you sign in. A payment is shown as completed only when the server confirms it with PayPal.
+- **Two tabs, two people:** a browser shares one login cookie between its tabs, so a tab that still shows one person could act as another who signed in later in a second tab. The page says who it believes is signed in (`X-Monetra-User`), and the server refuses a request that does not match with `409` before reading or saving anything.
+- Every answer carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy (camera for the QR scanner only).
 
 ## Architecture
 
@@ -253,6 +257,8 @@ The H2 file database lives on the container disk, so **data resets when the serv
 - A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Cash is a record of what you paid yourself. HE has no bank transfer option: PayPal cannot pay a bank account.
 - Account balances and spending are **entered by you**, not read from a bank.
 - The per-payment lock is in-process, so run a single server instance.
+- Sessions live in the server's memory. After a restart or a new deployment everyone has to sign in again (a PayPal payment that was waiting is checked after sign-in), and on Render's free plan the H2 data is wiped too.
+- Payments are confirmed when the browser returns from PayPal; the webhook confirms them if the browser never comes back. The webhook is checked by PayPal's signature and tested against a simulated PayPal. Confirm a live delivery in your PayPal app's webhook events (a `200` on `PAYMENT.CAPTURE.COMPLETED`) before relying on it.
 - Live QR camera scanning needs a browser with `BarcodeDetector` (Chrome, Edge, Android). On any browser you can upload a QR image instead.
 
 ## Not a financial advisor

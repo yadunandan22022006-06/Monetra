@@ -163,6 +163,18 @@ body.auth-mode {
 
 .auth-screen { width: 100%; max-width: 440px; }
 
+/* While the page asks the server who is signed in: a short message, never the sign-in form */
+
+.session-check-box { display: none; justify-items: center; gap: 14px; padding: 26px 8px; text-align: center; }
+
+.session-check-box p { margin: 0; color: rgba(255, 255, 255, 0.78); font-size: 15px; line-height: 1.5; }
+
+body.session-check .session-check-box { display: grid; }
+
+body.session-check #authCard .seg,
+body.session-check #loginPage,
+body.session-check #registerPage { display: none !important; }
+
 .wordmark {
     font-family: var(--serif);
     font-weight: 500;
@@ -2478,6 +2490,61 @@ body {
 .score-shield-text span { margin-top: 2cqw; font-size: 11cqw; font-weight: 500; line-height: 1.1; }
 
 .score-text:empty { display: none; }
+
+/* the level under the shield: its name, the points to the next one, and the score against all five levels */
+
+.score-hero { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+
+.score-shield { -webkit-user-select: none; user-select: none; }
+
+.score-level { display: grid; justify-items: center; gap: 3px; width: min(380px, 100%); }
+
+.score-level strong { color: #0f1b3d; font-size: 18px; font-weight: 800; letter-spacing: 0.2px; }
+
+.score-next { color: var(--muted); font-size: 13px; line-height: 1.35; }
+
+.level-meter {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: rgba(15, 27, 61, 0.12);
+}
+
+.level-meter > i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #eab846, #f6cd6c);
+}
+
+.level-meter > b { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #0f1b3d; opacity: 0.35; }
+
+.level-marks { position: relative; width: 100%; height: 16px; }
+
+.level-marks span {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+.level-marks span:first-child { transform: none; }
+
+.level-marks span.current { color: #0f1b3d; font-weight: 800; }
+
+/* the shield looks like the level: grey, bronze, silver, gold, and gold with a glow at the top */
+
+.score-shield.lvl-BEGINNER svg { filter: grayscale(0.9) brightness(1.08); }
+
+.score-shield.lvl-BUILDER svg { filter: sepia(0.55) saturate(1.5) hue-rotate(-14deg) brightness(0.9); }
+
+.score-shield.lvl-PROTECTOR svg { filter: grayscale(1) brightness(1.2) contrast(1.05); }
+
+.score-shield.lvl-ELITE svg { filter: saturate(1.2) drop-shadow(0 0 12px rgba(246, 205, 108, 0.9)); }
 
 .score-bar { width: min(420px, 100%); height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 

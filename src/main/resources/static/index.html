@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="app.css">
 </head>
 
-<body class="auth-mode">
+<body class="auth-mode session-check">
 
 <!-- SVG icon sprite -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -57,6 +57,12 @@
 <main class="auth-screen" id="authCard">
 
     <div class="wordmark">Monetra</div>
+
+    <!-- Shown instead of the sign-in form while the page asks the server who is signed in -->
+    <div id="sessionCheck" class="session-check-box" role="status" aria-live="polite">
+        <p id="sessionCheckText">Opening Monetra...</p>
+        <button type="button" id="sessionRetry" class="btn-gold hidden" onclick="location.reload()">Try again</button>
+    </div>
 
     <div class="seg" role="tablist">
         <button type="button" id="tabSignIn" class="active" onclick="showPage('loginPage')">Sign In</button>
@@ -1619,6 +1625,18 @@
                         <strong id="scoreValue">—</strong>
                         <span id="scoreOutOf">/100</span>
                     </span>
+                </div>
+
+                <!-- Where the score stands among the five levels: the level, the points to the next one, and a meter -->
+                <div class="score-level hidden" id="scoreLevel">
+                    <strong id="scoreLevelName"></strong>
+                    <span class="score-next" id="scoreNextText"></span>
+
+                    <div class="level-meter" id="scoreMeter" role="img">
+                        <i id="scoreMeterFill"></i>
+                    </div>
+
+                    <div class="level-marks" id="scoreMarks" aria-hidden="true"></div>
                 </div>
 
                 <span class="score-text" id="scoreConfidenceText"></span>
