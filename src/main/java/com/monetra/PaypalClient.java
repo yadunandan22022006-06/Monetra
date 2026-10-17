@@ -1,5 +1,8 @@
 package com.monetra;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +29,8 @@ import java.util.Map;
 @Component
 public class PaypalClient {
 
+    private static final Logger log = LoggerFactory.getLogger(PaypalClient.class);
+
     @Value("${paypal.client-id:}")
     private String clientId;
 
@@ -47,17 +52,48 @@ public class PaypalClient {
         return new RestTemplate(factory);
     }
 
+    /**
+     * A setting pasted into a hosting dashboard often carries a space, a line break or quote marks around it,
+     * and PayPal then answers 401 even though the key itself is right.
+     */
+    static String clean(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        String text = value.trim();
+
+        if (text.length() >= 2 && (text.startsWith("\"") && text.endsWith("\"") || text.startsWith("'") && text.endsWith("'"))) {
+            text = text.substring(1, text.length() - 1).trim();
+        }
+
+        return text;
+    }
+
+    /** Only the lengths are written, never the values, so the hosting log can show what the server received. */
+    @PostConstruct
+    void describeSettings() {
+        if (clientId.isBlank() && clientSecret.isBlank()) {
+            return;
+        }
+
+        log.info("PayPal settings: client id {} characters, secret {} characters, webhook id {} characters{}",
+                clean(clientId).length(), clean(clientSecret).length(), clean(webhookId).length(),
+                clean(clientId).equals(clientId) && clean(clientSecret).equals(clientSecret) && clean(webhookId).equals(webhookId)
+                        ? "" : " (extra spaces or quote marks were found around a value and are ignored)");
+    }
+
     public boolean configured() {
-        return !clientId.isBlank() && !clientSecret.isBlank();
+        return !clean(clientId).isEmpty() && !clean(clientSecret).isEmpty();
     }
 
     public boolean webhookConfigured() {
-        return configured() && !webhookId.isBlank();
+        return configured() && !clean(webhookId).isEmpty();
     }
 
     public String accessToken() {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBasicAuth(clientId, clientSecret);
+        headers.setBasicAuth(clean(clientId), clean(clientSecret));
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
@@ -121,7 +157,7 @@ public class PaypalClient {
         body.put("transmission_id", header(headers, "paypal-transmission-id"));
         body.put("transmission_sig", header(headers, "paypal-transmission-sig"));
         body.put("transmission_time", header(headers, "paypal-transmission-time"));
-        body.put("webhook_id", webhookId);
+        body.put("webhook_id", clean(webhookId));
         body.put("webhook_event", event);
 
         Map<String, Object> reply = post("/v1/notifications/verify-webhook-signature", body, null);
