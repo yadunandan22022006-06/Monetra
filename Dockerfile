@@ -10,4 +10,6 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/monetra-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8081
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# A small server (for example Render's free plan, 512 MB): use about two thirds of the memory for Java
+# and the light garbage collector. Tested to run in a 330 MB heap.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65", "-XX:+UseSerialGC", "-jar", "app.jar"]
