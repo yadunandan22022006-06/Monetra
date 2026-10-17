@@ -1254,6 +1254,14 @@ function phoneKeyFrom(text) {
     return digits.length < 10 ? '' : digits.slice(-10);
 }
 
+/* "98765 43210": a ten-digit number written the way the contact list shows it. Empty unless it is all ten digits. */
+
+function numberText(key) {
+    const digits = String(key || '');
+
+    return /^\d{10}$/.test(digits) ? digits.slice(0, 5) + ' ' + digits.slice(5) : '';
+}
+
 function renderRecipientCard(info, message, state, cardId) {
     const card = $(cardId || 'recipientCard');
 
@@ -1293,7 +1301,9 @@ async function lookupRecipient() {
 
     const run = ++lookupRun;
 
-    renderRecipientCard(null, 'Looking up ' + key.slice(0, 2) + 'xxxxxx' + key.slice(8) + '...', 'wait');
+    /* The number is the one the sender typed, so the hint says it in full. */
+
+    renderRecipientCard(null, 'Looking up ' + numberText(key) + '...', 'wait');
 
     try {
         const info = await apiJson('/api/payments/recipient?phone=' + key, {}, 10000);
@@ -1311,15 +1321,18 @@ async function lookupRecipient() {
 
         refreshSaveContact(key);
 
+        /* The full number when the server sent it; the masked one only if it did not. */
+        const number = numberText(info.phone) || info.maskedPhone;
+
         if (info.onMonetra) {
-            renderRecipientCard(info, 'On Monetra ✓ • ' + info.maskedPhone, 'found');
+            renderRecipientCard(info, 'On Monetra ✓ • ' + number, 'found');
             return;
         }
 
         const name = payMethod === 'QR' && scannedName ? scannedName : info.name;
 
         renderRecipientCard({ name },
-            'Not on Monetra yet • ' + info.maskedPhone + ' • you can still pay through PayPal', 'new');
+            'Not on Monetra yet • ' + number + ' • you can still pay through PayPal', 'new');
 
     } catch (error) {
         if (run === lookupRun) {
@@ -1462,9 +1475,9 @@ async function loadContacts(box) {
 
             const text = makeElement('span');
 
-            /* Your own contacts show the full number. People you only paid stay masked. */
+            /* The full number for numbers you already have (your contacts, people you paid); people who paid you stay masked. */
 
-            const number = c.saved ? c.phone.slice(0, 5) + ' ' + c.phone.slice(5) : c.maskedPhone;
+            const number = (c.saved || c.known) && numberText(c.phone) ? numberText(c.phone) : c.maskedPhone;
             const monetra = c.onMonetra ? ' • On Monetra' + (c.monetraName ? ' as ' + c.monetraName : '') : '';
 
             text.appendChild(document.createTextNode(c.name));
@@ -5352,7 +5365,7 @@ async function lookupHeRecipient() {
 
     const run = ++heLookupRun;
 
-    renderRecipientCard(null, 'Looking up ' + key.slice(0, 2) + 'xxxxxx' + key.slice(8) + '...', 'wait', 'heRecipientCard');
+    renderRecipientCard(null, 'Looking up ' + numberText(key) + '...', 'wait', 'heRecipientCard');
 
     try {
         const info = await apiJson('/api/payments/recipient?phone=' + key, {}, 10000);
@@ -5367,13 +5380,14 @@ async function lookupHeRecipient() {
             renderRecipientCard(null, 'This is your own number. Enter someone else\'s.', 'warn', 'heRecipientCard');
 
         } else if (info.onMonetra) {
-            renderRecipientCard(info, 'On Monetra ✓ • ' + info.maskedPhone, 'found', 'heRecipientCard');
+            renderRecipientCard(info, 'On Monetra ✓ • ' + (numberText(info.phone) || info.maskedPhone), 'found', 'heRecipientCard');
 
         } else {
             /* The same as on the Pay screen: a number that is not on Monetra can still be paid through PayPal. */
 
             renderRecipientCard({ name: heScannedName || info.name },
-                'Not on Monetra yet • ' + info.maskedPhone + ' • you can still pay through PayPal', 'new', 'heRecipientCard');
+                'Not on Monetra yet • ' + (numberText(info.phone) || info.maskedPhone) + ' • you can still pay through PayPal',
+                'new', 'heRecipientCard');
         }
 
         return hePayee;

@@ -30,6 +30,9 @@ public class ContactService {
         String name;
         String source;
         boolean saved;
+
+        /** The user already has this number: a saved or imported contact, or someone they paid. */
+        boolean known;
     }
 
     private final ContactRepository contacts;
@@ -66,23 +69,25 @@ public class ContactService {
 
         for (Contact c : rows) {
             if (!Contact.PHONE.equals(c.source)) {
-                add(byPhone, saved, c.phoneKey, c.name, "SAVED");
+                add(byPhone, saved, c.phoneKey, c.name, "SAVED", true);
             }
         }
 
+        /* People you paid: you typed their number, so it is yours to see in full. */
         for (PaymentRecord p : payments.findByUserIdOrderByCreatedAtDesc(userId)) {
             if (p.recipientPhone != null && !"FAILED".equals(p.status) && !"CANCELLED".equals(p.status)) {
-                add(byPhone, saved, p.recipientPhone, p.recipientName, "RECENT");
+                add(byPhone, saved, p.recipientPhone, p.recipientName, "RECENT", true);
             }
         }
 
+        /* People who paid you: their number is theirs, so it stays masked unless you also have it yourself. */
         for (PaymentRecord p : payments.findByRecipientUserIdAndStatusOrderByCreatedAtDesc(userId, "COMPLETED")) {
-            users.findById(p.userId).ifPresent(u -> add(byPhone, saved, u.getPhoneKey(), u.displayName(), "RECENT"));
+            users.findById(p.userId).ifPresent(u -> add(byPhone, saved, u.getPhoneKey(), u.displayName(), "RECENT", false));
         }
 
         for (Contact c : rows) {
             if (Contact.PHONE.equals(c.source)) {
-                add(byPhone, saved, c.phoneKey, c.name, Contact.PHONE);
+                add(byPhone, saved, c.phoneKey, c.name, Contact.PHONE, true);
             }
         }
 
@@ -119,6 +124,7 @@ public class ContactService {
             m.put("maskedPhone", Phones.mask(phone));
             m.put("source", entry.source);
             m.put("saved", entry.saved);
+            m.put("known", entry.known);
             m.put("onMonetra", account != null);
 
             if (onMonetraAs != null) {
@@ -289,7 +295,9 @@ public class ContactService {
     }
 
     /** Adds a number once. If you have your own contact for it, your name for that person is used. */
-    private static void add(Map<String, Entry> byPhone, Map<String, Contact> saved, String phone, String name, String source) {
+    private static void add(Map<String, Entry> byPhone, Map<String, Contact> saved, String phone, String name, String source,
+                            boolean known) {
+
         if (phone == null || phone.length() != 10 || byPhone.containsKey(phone)) {
             return;
         }
@@ -300,6 +308,7 @@ public class ContactService {
         e.name = own != null ? own.name : (name == null ? "" : name);
         e.source = source;
         e.saved = own != null;
+        e.known = known || own != null;
 
         byPhone.put(phone, e);
     }

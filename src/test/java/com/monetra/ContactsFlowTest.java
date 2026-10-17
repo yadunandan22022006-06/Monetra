@@ -156,4 +156,55 @@ class ContactsFlowTest {
 		assertTrue(left.contains("Milk shop"), left);
 		assertFalse(left.contains("Amma"), left);
 	}
+
+	/** The part of the list that belongs to one person: from their name to the end of their entry. */
+	private static String entry(String list, String name) {
+		int start = list.indexOf("{\"name\":\"" + name + "\"");
+
+		assertTrue(start >= 0, name + " is in the list: " + list);
+
+		return list.substring(start, list.indexOf('}', start) + 1);
+	}
+
+	@Test
+	void theListMarksTheNumbersYouAlreadyHaveSoTheyCanBeShownInFullAndOthersStayMasked() throws Exception {
+		BCryptPasswordEncoder enc = new BCryptPasswordEncoder();
+
+		users.save(new UserAccount("ken@test.dev", enc.encode("password-k"), "9000000091", "Ken Sender"));
+		users.save(new UserAccount("lia@test.dev", enc.encode("password-l"), "9000000092", "Lia Paid"));
+		users.save(new UserAccount("max@test.dev", enc.encode("password-m"), "9000000093", "Max Payer"));
+
+		Http ken = Http.login(port, "ken@test.dev", "password-k");
+		Http max = Http.login(port, "max@test.dev", "password-m");
+
+		/* A contact you saved yourself. */
+		assertEquals(200, ken.post("/api/contacts", "{\"phone\":\"9444444444\",\"name\":\"Cafe\"}").statusCode());
+
+		String cafe = entry(ken.get("/api/contacts?q=Cafe").body(), "Cafe");
+		assertTrue(cafe.contains("\"saved\":true") && cafe.contains("\"known\":true"), cafe);
+
+		/* Someone you paid: you typed their number, so it is yours to see. */
+		assertEquals(200, ken.post("/api/payments/create-order",
+				"{\"method\":\"PHONE\",\"recipientPhone\":\"9000000092\",\"amountInr\":440}").statusCode());
+
+		String lia = entry(ken.get("/api/contacts?q=Lia").body(), "Lia Paid");
+		assertTrue(lia.contains("\"known\":true") && lia.contains("\"saved\":false"), lia);
+
+		/* Someone who paid you: their number is theirs, so the list marks it as not yours to see in full. */
+		assertEquals(200, max.post("/api/payments/create-order",
+				"{\"method\":\"PHONE\",\"recipientPhone\":\"9000000091\",\"amountInr\":440}").statusCode());
+
+		String maxOrder = Http.field(max.get("/api/payments").body(), "orderId");
+		assertEquals(200, max.post("/api/payments/capture/" + maxOrder, "{}").statusCode());
+
+		String payer = entry(ken.get("/api/contacts?q=Max").body(), "Max Payer");
+		assertTrue(payer.contains("\"known\":false"), payer);
+		assertTrue(payer.contains("\"maskedPhone\":\"90xxxxxx93\""), payer);
+
+		/* Once you pay them yourself, you have typed their number: it is shown in full from then on. */
+		assertEquals(200, ken.post("/api/payments/create-order",
+				"{\"method\":\"PHONE\",\"recipientPhone\":\"9000000093\",\"amountInr\":440}").statusCode());
+
+		assertTrue(entry(ken.get("/api/contacts?q=Max").body(), "Max Payer").contains("\"known\":true"));
+	}
 }
