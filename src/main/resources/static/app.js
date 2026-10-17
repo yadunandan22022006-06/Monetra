@@ -743,7 +743,7 @@ $('loginForm').addEventListener('submit', async function(event) {
 
             const profile = await apiJson('/api/auth/me', {}, 8000);
 
-            await openDashboard(profile);
+            await openDashboard(profile, hasPendingReturn());
 
             /* A PayPal payment that could not be checked while nobody was signed in is checked now. */
             await resumePaypalReturn();
@@ -809,7 +809,9 @@ async function sessionExpired() {
     }
 }
 
-async function openDashboard(profile) {
+/* `returning`: back from PayPal, so the Pay screen opens at once with the result and Home is not shown first. */
+
+async function openDashboard(profile, returning) {
     me = {
         email: String(profile.email || '').toLowerCase(),
         name: profile.name || '',
@@ -821,6 +823,14 @@ async function openDashboard(profile) {
     $('dashboardAvatar').textContent = (me.name || me.email).charAt(0).toUpperCase();
 
     $('authCard').classList.add('hidden');
+
+    if (returning) {
+        /* The Pay screen is the first thing shown, before anything is loaded, so Home never flashes by. */
+        navigateTo('paymentView');
+
+        showPaymentResult('Checking your payment with PayPal...', '');
+    }
+
     $('dashboardPage').classList.remove('hidden');
 
     document.body.classList.remove('auth-mode');
@@ -831,10 +841,17 @@ async function openDashboard(profile) {
 
     renderAll();
 
-    /* Opening Home already loads the Guardian's figures (and the score), once. */
-    navigateTo('homeView');
+    if (returning) {
+        /* The payment is checked straight away; the lists and figures load in the background. */
+        loadPayments();
+        loadOverview();
 
-    await loadPayments();
+    } else {
+        /* Opening Home already loads the Guardian's figures (and the score), once. */
+        navigateTo('homeView');
+
+        await loadPayments();
+    }
 
     loadHe();
     loadNotifications(false);
@@ -6943,7 +6960,7 @@ async function init() {
         return;
     }
 
-    await openDashboard(profile);
+    await openDashboard(profile, returning);
 
     if (returning) {
         await handlePaypalReturn(params);
