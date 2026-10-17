@@ -262,13 +262,31 @@ function showToast(text, ms) {
 
 let askDone = null;
 
-function askBox(message, yesText, noText, startValue) {
+function askBox(message, yesText, noText, startValue, cards, extras) {
     const input = $('askInput');
     const wantsText = startValue !== undefined;
 
     if (askDone) {
         askDone(false);
     }
+
+    /* Red warning boxes, when the question comes with some (see guardianAlertCards). */
+
+    const cardsBox = $('askCards');
+
+    cardsBox.replaceChildren();
+
+    if (cards) {
+        cardsBox.appendChild(cards);
+    }
+
+    cardsBox.classList.toggle('hidden', !cards);
+
+    /* The Pay review's four buttons: with `extras`, the answer can also be 'adjust' or 'budget'. */
+
+    $('askAdjust').classList.toggle('hidden', !extras);
+    $('askBudget').classList.toggle('hidden', !extras);
+    $('askButtons').classList.toggle('ask-four', !!extras);
 
     $('askText').textContent = message;
     $('askYes').textContent = yesText || 'OK';
@@ -279,7 +297,11 @@ function askBox(message, yesText, noText, startValue) {
 
     $('askBox').classList.remove('hidden');
 
-    (wantsText ? input : $('askYes')).focus();
+    /* A tall box starts at the top (the red boxes), not scrolled down to the focused button. */
+
+    $('askBox').querySelector('.ask-card').scrollTop = 0;
+
+    (wantsText ? input : $('askYes')).focus({ preventScroll: true });
 
     return new Promise(resolve => {
         askDone = yes => {
@@ -294,8 +316,8 @@ function askBox(message, yesText, noText, startValue) {
 
 /* true when the user agrees, false when they do not. */
 
-function askConfirm(message, yesText, noText) {
-    return askBox(message, yesText, noText);
+function askConfirm(message, yesText, noText, cards, extras) {
+    return askBox(message, yesText, noText, undefined, cards, extras);
 }
 
 /* What the user typed, or null when they cancelled. */
@@ -306,6 +328,8 @@ function askText(message, startValue) {
 
 $('askYes').addEventListener('click', () => askDone && askDone(true));
 $('askNo').addEventListener('click', () => askDone && askDone(false));
+$('askAdjust').addEventListener('click', () => askDone && askDone('adjust'));
+$('askBudget').addEventListener('click', () => askDone && askDone('budget'));
 
 $('askBox').addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
@@ -2174,6 +2198,61 @@ function fraudBox(index, risk) {
     fraud.item.appendChild(label);
 
     return fraud.item;
+}
+
+/*
+ * The same numbered red boxes as the Pay review, for the question box (used by HE): one box for each thing the
+ * Guardian found, shown once, then the Fraud Guard's reasons. Returns null when nothing needs a warning.
+ */
+
+function guardianAlertCards(check, risk) {
+    const found = [];
+    const seen = new Set();
+
+    let decision = null;
+
+    safeArray(check && check.guardian && check.guardian.cards).forEach(card => {
+        const key = card.title + '|' + card.text;
+
+        if (card.title === 'YOUR DECISION') {
+            decision = card;
+
+        } else if (!seen.has(key)) {
+            seen.add(key);
+            found.push(card);
+        }
+    });
+
+    const flags = safeArray(risk && risk.flags);
+
+    if (!found.length && !flags.length) {
+        return null;
+    }
+
+    const wrap = makeElement('div', 'ask-cards-list');
+
+    wrap.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
+
+    let n = 0;
+
+    found.forEach(card => wrap.appendChild(alertBox(n++, card.title, card.text, card.action).item));
+
+    if (flags.length) {
+        const fraud = alertBox(n++, 'FRAUD GUARD', 'Please check this payment.', '');
+        const list = makeElement('ul', 'alert-list');
+
+        flags.forEach(text => list.appendChild(makeElement('li', '', text)));
+
+        fraud.item.appendChild(list);
+        wrap.appendChild(fraud.item);
+    }
+
+    /* Last, as on the Pay review: the decision. */
+
+    wrap.appendChild(alertBox(n, 'YOUR DECISION',
+        decision ? decision.text : 'Review the payment and decide whether to continue.', '').item);
+
+    return wrap;
 }
 
 /* The server asked for the Fraud Guard to be confirmed after all (it checks again when the order is made). */
@@ -5681,18 +5760,33 @@ async function startHePaypalPayment(amount, description, label) {
         postJson('/api/payments/risk', payload, 15000)
     ]);
 
-    const warnings = safeArray(check.guardian && check.guardian.cards)
-        .filter(card => card.title !== 'YOUR DECISION')
-        .map(card => '• ' + card.title + ': ' + card.text);
+    /* Each thing the Guardian found is its own red box, like on the Pay review. */
 
-    safeArray(risk.flags).forEach(flag => warnings.push('• FRAUD GUARD: ' + flag));
+    const warnings = guardianAlertCards(check, risk);
 
-    const question = (warnings.length ? 'GUARDIAN AI — PAYMENT ALERT\n\n' + warnings.join('\n\n') + '\n\n' : '') +
-        'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings.length ? ' anyway?' : '?');
+    const question = 'Pay ' + money(amount) + ' to ' + risk.recipientName + ' through PayPal' + (warnings ? ' anyway?' : '?');
 
-    /* "Pay" starts the payment exactly as before; "Go Back" closes the box and nothing is started. */
+    /*
+     * The same four buttons as the Pay review. "Continue" starts the payment exactly as before; the others
+     * close the box and nothing is started: Go Back, Adjust Amount (back to the amount) or Review Budget.
+     */
 
-    if (!await askConfirm(question, 'Pay', 'Go Back')) {
+    const answer = await askConfirm(question, warnings ? 'Continue Anyway' : 'Continue to PayPal', 'Go Back', warnings, true);
+
+    if (answer === 'adjust') {
+        $('heAmount').focus();
+        $('heAmount').select();
+
+        return 'Payment not started. Change the amount, then press Pay Now.';
+    }
+
+    if (answer === 'budget') {
+        navigateTo('spendingView');
+
+        return 'Payment not started.';
+    }
+
+    if (answer !== true) {
         return 'Payment not started.';
     }
 

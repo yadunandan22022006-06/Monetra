@@ -772,6 +772,20 @@ body.auth-mode {
 
 .ask-card input { margin-top: 14px; }
 
+/* the Guardian's red warning boxes inside the question box: one box each, with a gap between them */
+
+.ask-cards { margin-bottom: 14px; }
+
+.ask-cards-list { display: flex; flex-direction: column; gap: 8px; }
+
+.ask-cards .alert-card p { white-space: normal; }
+
+/* the Pay review's four buttons in the question box, two by two */
+
+.ask-card .button-row.ask-four { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+.ask-card .button-row.ask-four button { padding: 11px 6px; font-size: 13.5px; }
+
 .ask-card .button-row { margin-top: 16px; }
 
 .ask-card .button-row button { padding: 12px 10px; }
