@@ -1,10 +1,14 @@
 # Monetra: Your Smart Financial Guardian
 
+[![Tests](https://github.com/yadunandan22022006-06/Monetra/actions/workflows/tests.yml/badge.svg)](https://github.com/yadunandan22022006-06/Monetra/actions/workflows/tests.yml)
+
 > **PayPal AI Hackathon 2026** entry. Monetra helps students and families understand their money, remember household expenses and make safer payments. An AI agent explains, a Java rules engine calculates, you decide, PayPal processes the payment and the server verifies the result.
 
 **AI advises. You decide. PayPal processes. The backend verifies.**
 
 Everything runs in **PayPal Sandbox** with test money. No real money moves.
+
+**Try it online:** <https://monetra-tgjl.onrender.com>. Sign in with the demo account `demo1@monetra.test` (the password is in the Devpost testing instructions). New sign-ups are switched off on this site. It runs on a free plan, so after a quiet spell the first page can take about a minute to wake up.
 
 ## The Financial Guardian: one payment, three consequences
 
@@ -244,7 +248,7 @@ The H2 file database lives on the container disk, so **data resets when the serv
 ## Honest limitations
 
 - **Sandbox only.** Test money. Going live needs a live PayPal merchant account and review.
-- **Check Balance uses Setu's sandbox:** its accounts and balances are Setu's test data, not a real bank. Reading real bank accounts through the Account Aggregator network needs Setu's production approval, and FIUs must be regulated entities (RBI, SEBI, IRDAI or PFRDA).
+- **Check Balance uses Setu's sandbox:** its accounts and balances are Setu's test data, not a real bank. Reading real bank accounts through the Account Aggregator network needs Setu's production approval, and FIUs must be regulated entities (RBI, SEBI, IRDAI or PFRDA). Check Balance is built and tested against a simulated Setu, but live Setu access needs business verification that this project does not have, so the online demo runs without Setu keys and the screen says it is not set up. It never shows a made-up balance.
 - Payouts need **Payouts enabled** on your PayPal app and a **balance** in the Sandbox business account. If a payout fails, the payment stays confirmed and the receiver sees the payout status, with a retry button.
 - A mobile number or bank account is used to **identify** the recipient inside Monetra. Monetra does not send real UPI or bank transfers. In HE, Cash is a record of what you paid yourself. HE has no bank transfer option: PayPal cannot pay a bank account.
 - Account balances and spending are **entered by you**, not read from a bank.
