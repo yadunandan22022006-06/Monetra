@@ -2857,7 +2857,7 @@ body:not(.auth-mode) { background: #f4f2ec; }
     gap: 12px;
     align-items: start;
     padding: 12px 12px 12px 22px;
-    border: 1px solid #efe8d6;
+    border: 2px solid #0b1f5c;
     border-radius: 16px;
     background: #ffffff;
     color: var(--rc-text);
@@ -2952,7 +2952,7 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
 /* all clear: the same card in green */
 
-.rc-low { --rc-accent: #1f9d5a; --rc-soft: #dff4e7; --rc-text: #176b3b; border-color: #d7eadf; }
+.rc-low { --rc-accent: #1f9d5a; --rc-soft: #dff4e7; --rc-text: #176b3b; border-color: #176b3b; }
 
 .rc-low .rc-bar { background: linear-gradient(180deg, #4cc783, #1f9d5a); }
 
