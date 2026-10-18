@@ -40,6 +40,16 @@ final class Http {
         return send("POST", path, body, Map.of());
     }
 
+    /** Raw bytes (a picture), as the page sends a QR image. */
+    HttpResponse<String> postBytes(String path, byte[] body) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .header("Content-Type", "application/octet-stream")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
     HttpResponse<String> put(String path, String body) throws Exception {
         return send("PUT", path, body, Map.of());
     }

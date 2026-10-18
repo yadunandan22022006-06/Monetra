@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.imageio.ImageIO;
@@ -69,9 +70,14 @@ public class QrController {
         }
     }
 
-    /** Reads a QR code from an uploaded image (raw bytes in the request body). */
+    /**
+     * Reads a QR code from an uploaded image (raw bytes in the request body). The image is only read, never saved.
+     * With live=1 (frames from the camera, sent again and again until a code shows) an image with no code in it is
+     * an ordinary answer ({"found": false}), not an error.
+     */
     @PostMapping(value = "/decode", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<?> decode(@RequestBody byte[] image, HttpSession session) {
+    public ResponseEntity<?> decode(@RequestBody byte[] image, @RequestParam(value = "live", defaultValue = "") String live,
+            HttpSession session) {
         if (SessionUser.id(session) == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Please log in first."));
         }
@@ -98,6 +104,10 @@ public class QrController {
             return ResponseEntity.ok(Map.of("text", text, "payee", parse(text)));
 
         } catch (NotFoundException e) {
+            if ("1".equals(live)) {
+                return ResponseEntity.ok(Map.of("found", false));
+            }
+
             return ResponseEntity.badRequest().body(Map.of("error", "No QR code found in that image."));
 
         } catch (Exception e) {
