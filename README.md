@@ -10,6 +10,69 @@ Everything runs in **PayPal Sandbox** with test money. No real money moves.
 
 **Try it online:** <https://monetra-tgjl.onrender.com>. Sign in with the demo account `demo1@monetra.test` (the password is in the Devpost testing instructions). New sign-ups are switched off on this site. It runs on a free plan, so after a quiet spell the first page can take about a minute to wake up.
 
+## Screenshots
+
+Taken on the live site with the demo account. PayPal Sandbox, test money. In the order you meet the app: sign in, Home, then the bottom menu (Pay, Spending, Loans, Savings), then Forecast, the Guardian, HE and Notifications.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/01-sign-in.png" alt="Sign in with the demo account"><br><b>Sign in</b> with the demo account.</td>
+<td width="50%"><img src="docs/screenshots/02-home.png" alt="Home: Safe to Spend Today, Send Money and Check Balance"><br><b>Home.</b> Safe to Spend Today, Send Money and Check Balance.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/03-pay-form.png" alt="Pay: send by mobile number, QR or bank account"><br><b>Pay.</b> By mobile number, QR or bank account.</td>
+<td width="50%"><img src="docs/screenshots/04-risk-review.png" alt="Review before PayPal: a risky payment, one tinted card per warning"><br><b>Before you pay.</b> A risky payment: each warning is one card with its risk level and what you could do.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/05-risk-review-cards.png" alt="The same review scrolled: payment risk and loan repayment risk"><br><b>The same review, scrolled.</b> Payment risk and loan repayment risk.</td>
+<td width="50%"><img src="docs/screenshots/06-safe-review.png" alt="Review before PayPal: a safe payment, all green"><br><b>A payment that fits.</b> The same cards, all green, and the AI's short advice.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/07-payment-successful.png" alt="Payment Successful with PayPal's transaction ID"><br><b>PayPal confirms it.</b> "Payment Successful" appears only after the server has checked the capture, with PayPal's transaction ID.</td>
+<td width="50%"><img src="docs/screenshots/08-transactions.png" alt="Transactions: confirmed PayPal payments and recorded expenses"><br><b>Transactions.</b> Payments appear only after PayPal confirms them.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/09-spending-limits.png" alt="Daily, weekly, monthly and yearly spending limits"><br><b>Spending limits.</b> Daily, weekly, monthly and yearly.</td>
+<td width="50%"><img src="docs/screenshots/10-loans-guardian.png" alt="Loans and EMI Tracker: the Guardian tab"><br><b>Loans.</b> The Guardian tab: risk and next month's forecast.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/11-emi-calendar.png" alt="EMI calendar"><br><b>EMI calendar.</b></td>
+<td width="50%"><img src="docs/screenshots/12-my-loans.png" alt="My loans with the EMI saving plan"><br><b>My loans.</b> With the EMI saving plan.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/13-add-loan.png" alt="Add a loan"><br><b>Add a loan.</b></td>
+<td width="50%"><img src="docs/screenshots/14-savings-goals.png" alt="Savings goal with progress"><br><b>Savings goals.</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/15-buy-planner-result.png" alt="Smart Buy Planner: not safe to buy a laptop today, with the reason and what to put aside"><br><b>Smart Buy Planner.</b> "Not safe to buy today", why, and what to put aside a day or a month.</td>
+<td width="50%"><img src="docs/screenshots/16-buy-planner-tracking.png" alt="Buy Planner: the earliest safe day, and Track this plan turns it into a savings goal"><br><b>Buy Planner.</b> The earliest safe day, and "Track this plan" turns it into a savings goal.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/17-forecast.png" alt="Spending forecast for this month"><br><b>Spending forecast.</b> Where this month is heading against your limit.</td>
+<td width="50%"><img src="docs/screenshots/18-forecast-ai.png" alt="Forecast explained by the Guardian AI"><br><b>Forecast, explained by the AI.</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/19-guardian-score.png" alt="Guardian Score shield with level and progress"><br><b>Guardian Score.</b> A 0 to 100 score, a level and what is needed for the next one.</td>
+<td width="50%"><img src="docs/screenshots/20-guardian-badges.png" alt="Daily Guardian badges"><br><b>Daily badges.</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/21-ai-guardian-chat.png" alt="AI Guardian answering questions about the user's money"><br><b>AI Guardian.</b> Answers from your own figures, which Java calculated.</td>
+<td width="50%"><img src="docs/screenshots/22-scam-shield-input.png" alt="Scam Shield: paste a suspicious message"><br><b>Scam Shield.</b> Paste a suspicious message. It is not saved.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/23-scam-shield-result.png" alt="Scam Shield marking a fake PayPal message as HIGH risk with the reasons"><br><b>Scam Shield result.</b> Java rules rate the risk and explain why.</td>
+<td width="50%"><img src="docs/screenshots/24-scam-shield-advice.png" alt="Scam Shield advice and the words that gave the message away"><br><b>Scam Shield.</b> What to do, and the words that gave it away.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/25-he-pay.png" alt="HE home expenses: pay by scan, QR, mobile number or cash, with the confirmed payment shown above"><br><b>HE: Home Expenses.</b> Pay now, with the result shown above.</td>
+<td width="50%"><img src="docs/screenshots/26-he-history.png" alt="HE history with the PayPal payment marked Successful"><br><b>HE history.</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/27-notifications-payments.png" alt="Payment and Guardian notifications"><br><b>Notifications.</b> Payments and Guardian alerts.</td>
+<td width="50%"><img src="docs/screenshots/28-notifications-badges.png" alt="Badge notifications"><br><b>Badge notifications.</b></td>
+</tr>
+</table>
+
 ## The Financial Guardian: one payment, three consequences
 
 Monetra does not just tell you how much you are spending. Before you pay, one analysis looks at the payment three ways at once and tells you what it could mean for your next EMI, next month and your goals.
