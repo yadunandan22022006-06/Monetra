@@ -2,6 +2,7 @@ package com.monetra;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
@@ -11,6 +12,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * What happens after PayPal confirms a payment: notify both people, settle a linked household
@@ -31,6 +34,18 @@ public class PaymentService {
 
     /** One lock object per payment, so two requests for the same payment cannot overlap. */
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
+
+    /** true: the score and the payout follow the answer to the browser; false: they are done before it (tests that read them at once). */
+    @Value("${monetra.payments.after-capture-async:true}")
+    private boolean afterConfirmationLater;
+
+    private final ExecutorService afterConfirmation = Executors.newFixedThreadPool(2, task -> {
+        Thread thread = new Thread(task, "after-confirmation");
+
+        thread.setDaemon(true);
+
+        return thread;
+    });
 
     public PaymentService(
             PaymentRepository payments,
@@ -86,10 +101,46 @@ public class PaymentService {
             }
         }
 
-        /* Only a payment PayPal confirmed reaches the Guardian Score. */
-        score.refreshQuietly(rec.userId);
+        finishAfterConfirmation(rec);
+    }
 
-        payoutIfPossible(rec);
+    /**
+     * The slow work that follows a confirmation (the Guardian Score, and the payout to the receiver's PayPal, which
+     * is another trip to PayPal) is done after the answer has been sent, so the user sees "Payment Successful" at
+     * once. It reads the payment again under its lock, so it never overwrites what the confirmation saved. If it
+     * does not finish (the server stops), the payout is tried again when the payment is next refreshed.
+     */
+    private void finishAfterConfirmation(PaymentRecord rec) {
+        if (!afterConfirmationLater) {
+            /* Right now, on this very record: the caller saves it again afterwards, so it must carry the payout. */
+            score.refreshQuietly(rec.userId);
+
+            payoutIfPossible(rec);
+
+            return;
+        }
+
+        String paymentId = rec.paymentId;
+        Long userId = rec.userId;
+
+        afterConfirmation.execute(() -> {
+            try {
+                /* Only a payment PayPal confirmed reaches the Guardian Score. */
+                score.refreshQuietly(userId);
+
+                /* The caller still holds this lock while it saves its own copy; waiting for it means the record read here is the final one. */
+                synchronized (lock(paymentId)) {
+                    PaymentRecord fresh = payments.findById(paymentId).orElse(null);
+
+                    if (fresh != null && "COMPLETED".equals(fresh.status)) {
+                        payoutIfPossible(fresh);
+                    }
+                }
+
+            } catch (RuntimeException e) {
+                log.error("Could not finish the work after confirming payment {}", paymentId, e);
+            }
+        });
     }
 
     /* ------------------------------------------------------------------ */

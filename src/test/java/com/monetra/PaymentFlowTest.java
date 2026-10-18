@@ -27,7 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 				"spring.datasource.url=jdbc:h2:mem:monetra-pay",
 				"spring.mail.host=localhost",
 				"anthropic.api-key=",
-				"paypal.webhook-id=WH-TEST"
+				"paypal.webhook-id=WH-TEST",
+				/* This test reads the payout the moment the payment is confirmed. PaymentOutcomeTest covers it done later. */
+				"monetra.payments.after-capture-async=false"
 		})
 class PaymentFlowTest {
 
@@ -87,6 +89,8 @@ class PaymentFlowTest {
 		assertEquals(403, mallory.post("/api/payments/capture/" + orderId, "{}").statusCode());
 
 		/* The sender captures after approving on PayPal. */
+		int capturesBefore = PAYPAL.captures.get();
+
 		HttpResponse<String> captured = asha.post("/api/payments/capture/" + orderId, "{}");
 
 		assertEquals(200, captured.statusCode(), captured.body());
@@ -95,6 +99,9 @@ class PaymentFlowTest {
 
 		/* Capturing twice returns the stored result and does not notify twice. */
 		assertTrue(asha.post("/api/payments/capture/" + orderId, "{}").body().contains("COMPLETED"));
+
+		/* ...and PayPal itself was asked to take the money only once. */
+		assertEquals(capturesBefore + 1, PAYPAL.captures.get(), "a repeated confirmation must not charge again");
 
 		/* The sender sees it as sent. */
 		String ashaList = asha.get("/api/payments").body();

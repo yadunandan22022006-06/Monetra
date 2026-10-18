@@ -260,6 +260,70 @@ class PaymentOutcomeTest {
     }
 
     @Test
+    void aHomeExpensePaymentComesBackToTheHomeExpenseScreenAndAnyOtherToPay() throws Exception {
+        user("out17@test.dev", "9000000197", "Out Seventeen");
+        user("out18@test.dev", "9000000198", "Out Eighteen");
+
+        Http me = Http.login(port, "out17@test.dev", "password-1");
+
+        int before = PAYPAL.orderRequests.size();
+
+        pay(me, "9000000198", 880);
+
+        HttpResponse<String> he = me.post("/api/payments/create-order",
+                "{\"method\":\"PHONE\",\"recipientPhone\":\"9000000198\",\"amountInr\":770,\"heType\":\"DAILY\",\"heMethod\":\"MOBILE\"}");
+
+        assertEquals(200, he.statusCode(), he.body());
+
+        String ordinary = PAYPAL.orderRequests.get(before);
+        String home = PAYPAL.orderRequests.get(before + 1);
+
+        /* Where PayPal sends the person back to tells the page which screen to open, before any answer is known. */
+        assertTrue(ordinary.contains("paypal=return&ref="), ordinary);
+        assertFalse(ordinary.contains("from=he"), ordinary);
+
+        assertTrue(home.contains("paypal=return&ref=") && home.contains("from=he"), home);
+        assertTrue(home.contains("paypal=cancel&ref="), home);
+        assertEquals(2, count(home, "from=he"), "both the return and the cancel address: " + home);
+    }
+
+    @Test
+    void theConfirmationDoesNotWaitForTheReceiversPayoutAndPayPalsTokenIsReused() throws Exception {
+        user("out15@test.dev", "9000000195", "Out Fifteen");
+        user("out16@test.dev", "9000000196", "Out Sixteen");
+
+        Http me = Http.login(port, "out15@test.dev", "password-1");
+        Http other = Http.login(port, "out16@test.dev", "password-1");
+
+        int tokensBefore = PAYPAL.tokens.get();
+
+        String orderId = Http.field(pay(me, "9000000196", 880), "orderId");
+
+        HttpResponse<String> done = me.post("/api/payments/capture/" + orderId, "{}");
+
+        assertTrue(done.body().contains("\"status\":\"COMPLETED\""), done.body());
+
+        /* Three PayPal calls (the order, the capture and a check) used at most one new access token. */
+        assertTrue(me.post("/api/payments/capture/" + orderId, "{}").body().contains("COMPLETED"));
+        assertTrue(PAYPAL.tokens.get() - tokensBefore <= 1, "tokens asked for: " + (PAYPAL.tokens.get() - tokensBefore));
+
+        /* The receiver is on Monetra but has no PayPal email yet: that outcome of the payout follows a moment later. */
+        String notes = "";
+
+        for (int i = 0; i < 50 && !notes.contains("Add your PayPal email"); i++) {
+            Thread.sleep(100);
+
+            notes = other.get("/api/notifications").body();
+        }
+
+        assertTrue(notes.contains("Add your PayPal email"), notes);
+        assertTrue(me.get("/api/payments").body().contains("\"payoutStatus\":\"WAITING_EMAIL\""), me.get("/api/payments").body());
+
+        /* ...and the payment itself is in the history once, completed. */
+        assertEquals(1, count(me.get("/api/payments").body(), "\"paymentId\""));
+    }
+
+    @Test
     void aCancelledPaymentIsCancelledAndNeverCompleted() throws Exception {
         user("out13@test.dev", "9000000193", "Out Thirteen");
         user("out14@test.dev", "9000000194", "Out Fourteen");

@@ -506,11 +506,13 @@ function applyRecords(source) {
     records.he.reminders = isObject(records.he.reminders) ? records.he.reminders : {};
 }
 
-async function loadRecords() {
+/* `early`: the records, already asked for while the page was still finding out who is signed in (see init). */
+
+async function loadRecords(early) {
     let loaded = null;
 
     try {
-        loaded = await apiJson('/api/data', {}, 15000);
+        loaded = await (early || apiJson('/api/data', {}, 15000));
     } catch (error) {
         loaded = null;
     }
@@ -744,7 +746,7 @@ $('loginForm').addEventListener('submit', async function(event) {
 
             const profile = await apiJson('/api/auth/me', {}, 8000);
 
-            await openDashboard(profile, hasPendingReturn());
+            await openDashboard(profile, pendingReturnKind());
 
             /* A PayPal payment that could not be checked while nobody was signed in is checked now. */
             await resumePaypalReturn();
@@ -816,7 +818,7 @@ async function sessionExpired() {
  * Pay with its result, and Home is never shown first.
  */
 
-async function openDashboard(profile, returning) {
+async function openDashboard(profile, returning, recordsEarly) {
     me = {
         email: String(profile.email || '').toLowerCase(),
         name: profile.name || '',
@@ -827,16 +829,21 @@ async function openDashboard(profile, returning) {
     $('dashboardUser').textContent = me.email;
     $('dashboardAvatar').textContent = (me.name || me.email).charAt(0).toUpperCase();
 
-    await loadRecords();
+    await loadRecords(recordsEarly);
 
     adoptAccountPrefs();
 
     renderAll();
 
-    if (returning) {
+    if (returning === 'he') {
+        navigateTo('heView');
+
+        showHeWorking();
+
+    } else if (returning) {
         navigateTo('paymentView');
 
-        showPaymentResult('Checking your payment with PayPal...', '');
+        showPaymentWorking();
 
     } else {
         /* Opening Home also loads the Guardian's figures (and the score), once. */
@@ -930,6 +937,7 @@ function closeDashboard(note, serverAlreadyEnded) {
 
     $('paymentResult').classList.add('hidden');
     $('heResult').classList.add('hidden');
+    $('heView').classList.remove('confirming');
     $('bellBadge').classList.add('hidden');
     $('guardianBadge').classList.add('hidden');
 
@@ -3058,6 +3066,25 @@ function showPaymentDone(kind, title, payment, text, ref) {
     card.classList.remove('hidden');
 }
 
+/* While PayPal's answer is awaited: a card with a spinner, so the page looks like it is working, not stuck or signed out. */
+
+function showPaymentWorking() {
+    const card = $('paymentDone');
+
+    card.replaceChildren();
+    card.className = 'card payment-done working';
+
+    card.appendChild(makeElement('div', 'done-spinner'));
+    card.appendChild(makeElement('h2', 'done-title', 'Confirming your payment'));
+    card.appendChild(makeElement('p', 'done-text', 'Waiting for PayPal to confirm it. This takes a few seconds.'));
+
+    $('paymentResult').classList.add('hidden');
+    $('paymentForm').classList.add('hidden');
+    $('reviewPanel').classList.add('hidden');
+
+    card.classList.remove('hidden');
+}
+
 /* The card for what the server said about a payment (its record), by what really happened to it. */
 
 function presentPaymentResult(payment, ref) {
@@ -3143,6 +3170,78 @@ async function checkPaymentAgain(ref, button, card) {
     }
 }
 
+/*
+ * While PayPal's answer is awaited for a home expense (HE) payment: the same "confirming" card as on Pay, on the HE
+ * screen, with the HE form out of sight until the result is there.
+ */
+
+function showHeWorking() {
+    const box = $('heResult');
+
+    box.className = 'card payment-done working';
+
+    box.replaceChildren(
+        makeElement('div', 'done-spinner'),
+        makeElement('h2', 'done-title', 'Confirming your payment'),
+        makeElement('p', 'done-text', 'Waiting for PayPal to confirm it. This takes a few seconds.'));
+
+    $('heView').classList.add('confirming');
+}
+
+/* The result line on the HE screen; the HE form comes back with it. */
+
+function showHeMessage(text, kind) {
+    $('heView').classList.remove('confirming');
+
+    showPaymentResult(text, kind, 'heResult');
+}
+
+/* What really happened to a home expense (HE) payment, on the HE screen. */
+
+function showHeOutcome(payment) {
+    const status = String(payment.status || '');
+
+    const text = status === 'COMPLETED'
+        ? '✅ Payment completed and confirmed: ' + money(payment.amountInr) + ' (' + usd(payment.amountUsd) + ') to ' +
+            payment.counterparty + '. Reference ' + String(payment.paymentId).slice(0, 8) + '.'
+        : status === 'CANCELLED'
+            ? 'Payment cancelled. No money was taken.'
+            : 'The payment was not completed (status: ' + (STATUS_LABELS[status] || status) + '). ' + (payment.message || '');
+
+    /* The Pay screen's "confirming" card is not left behind there (the Back arrow would show it again). */
+    hidePaymentDone();
+
+    $('paymentResult').classList.add('hidden');
+
+    if (currentView !== 'heView') {
+        navigateTo('heView');
+    }
+
+    showHeMessage(text, status === 'COMPLETED' ? 'good-box' : 'bad-box');
+}
+
+/* The server could not say, or refused: the HE payment is not shown as paid. The server is asked where it really stands. */
+
+async function presentHeFailure(error, ref) {
+    const text = String(error && error.message || 'Monetra could not reach the server.');
+    const unknown = !error || !error.status || error.status >= 500;
+
+    if (unknown && ref) {
+        try {
+            showHeOutcome(await postJson('/api/payments/' + encodeURIComponent(ref) + '/refresh', {}, 30000));
+
+            return;
+
+        } catch (ignored) {
+            /* Still not known: the message below says so. */
+        }
+    }
+
+    const open = unknown || (error.status === 409 && /not been approved/i.test(text));
+
+    showHeMessage(open ? text + ' Nothing has been confirmed yet. Check Transactions in a moment.' : text, 'bad-box');
+}
+
 /* `early`: the server's answer, already asked for while the page was opening (see init); none after a sign-in. */
 
 async function handlePaypalReturn(params, early) {
@@ -3150,9 +3249,24 @@ async function handlePaypalReturn(params, early) {
     const ref = params.get('ref') || '';
     const token = params.get('token') || '';
 
-    navigateTo('paymentView');
+    /* A home expense (HE) payment comes back to the HE screen, any other one to Pay. */
+    const he = returnScreen(params) === 'he';
 
-    showPaymentResult('Checking your payment with PayPal...', '');
+    /* Usually the page already opened on that screen (see openDashboard); then only the waiting message is drawn. */
+    if (he) {
+        if (currentView !== 'heView') {
+            navigateTo('heView');
+        }
+
+        showHeWorking();
+
+    } else {
+        if (currentView !== 'paymentView') {
+            navigateTo('paymentView');
+        }
+
+        showPaymentWorking();
+    }
 
     let payment = null;
     let failure = null;
@@ -3185,32 +3299,31 @@ async function handlePaypalReturn(params, early) {
         }
     }
 
-    if (payment && payment.heType) {
+    if (payment && (payment.heType || he)) {
         /* A home expense (HE) payment reports its result on the HE screen instead of Pay. */
-
-        const status = String(payment.status || '');
-
-        const text = status === 'COMPLETED'
-            ? '✅ Payment completed and confirmed: ' + money(payment.amountInr) + ' (' + usd(payment.amountUsd) + ') to ' +
-                payment.counterparty + '. Reference ' + String(payment.paymentId).slice(0, 8) + '.'
-            : status === 'CANCELLED'
-                ? 'Payment cancelled. No money was taken.'
-                : 'The payment was not completed (status: ' + (STATUS_LABELS[status] || status) + '). ' + (payment.message || '');
-
-        $('paymentResult').classList.add('hidden');
-
-        navigateTo('heView');
-
-        showPaymentResult(text, status === 'COMPLETED' ? 'good-box' : 'bad-box', 'heResult');
+        showHeOutcome(payment);
 
     } else if (payment) {
         presentPaymentResult(payment, ref);
 
     } else if (failure) {
-        await presentPaymentFailure(failure, ref);
+        if (he) {
+            await presentHeFailure(failure, ref);
+
+        } else {
+            await presentPaymentFailure(failure, ref);
+        }
 
     } else if (note) {
-        showPaymentResult(note.text, note.kind);
+        if (he) {
+            showHeMessage(note.text, note.kind);
+
+        } else {
+            /* The "confirming" card must not stay on screen next to the message. */
+            hidePaymentDone();
+
+            showPaymentResult(note.text, note.kind);
+        }
     }
 
     await loadPayments();
@@ -7115,18 +7228,32 @@ function savePendingReturn(params) {
     }
 }
 
-/* True only while the saved details are still usable (the same rule as takePendingReturn). */
+/* Which screen a PayPal return belongs on: the HE screen for a home expense payment, otherwise Pay. */
 
-function hasPendingReturn() {
+function returnScreen(params) {
+    return params.get('from') === 'he' ? 'he' : 'pay';
+}
+
+/* 'pay', 'he', or false: only while the saved details are still usable (the same rule as takePendingReturn). */
+
+function pendingReturnKind() {
     try {
         const raw = sessionStorage.getItem(PENDING_RETURN_KEY);
         const saved = raw ? JSON.parse(raw) : null;
 
-        return !!saved && Date.now() - Number(saved.at) < 30 * 60 * 1000;
+        if (!saved || Date.now() - Number(saved.at) >= 30 * 60 * 1000) {
+            return false;
+        }
+
+        return returnScreen(new URLSearchParams(saved.query));
 
     } catch (error) {
         return false;
     }
+}
+
+function hasPendingReturn() {
+    return !!pendingReturnKind();
 }
 
 /* The saved details, once; or null when there are none or they are older than half an hour. */
@@ -7222,7 +7349,8 @@ async function init() {
 
     const params = new URLSearchParams(location.search);
 
-    const returning = !!params.get('paypal');
+    /* false, or 'pay' / 'he': the screen the payment was started from. */
+    const returning = params.get('paypal') ? returnScreen(params) : false;
 
     /* Back from Setu's consent screens. */
     const bankReturn = params.get('bank') === 'return';
@@ -7234,8 +7362,12 @@ async function init() {
      */
 
     let early = null;
+    let recordsEarly = null;
 
     if (returning) {
+        /* The user's records are asked for at the same moment, so they are waiting when the page is ready to show them. */
+        recordsEarly = apiJson('/api/data', {}, 15000).catch(() => null);
+
         const flow = params.get('paypal');
         const token = params.get('token') || '';
 
@@ -7290,7 +7422,7 @@ async function init() {
         return;
     }
 
-    await openDashboard(profile, returning);
+    await openDashboard(profile, returning, recordsEarly);
 
     if (returning) {
         await handlePaypalReturn(params, early);

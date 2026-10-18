@@ -31,6 +31,9 @@ final class FakePaypal {
     /** How many capture requests PayPal has received. */
     final AtomicInteger captures = new AtomicInteger();
 
+    /** How many times Monetra asked for an access token. */
+    final AtomicInteger tokens = new AtomicInteger();
+
     FakePaypal() {
         try {
             server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -57,7 +60,9 @@ final class FakePaypal {
         int status = 200;
 
         if (path.equals("/v1/oauth2/token")) {
-            reply = "{\"access_token\":\"fake-token\"}";
+            tokens.incrementAndGet();
+
+            reply = "{\"access_token\":\"fake-token\",\"expires_in\":32400}";
 
         } else if (path.equals("/v2/checkout/orders")) {
             String id = "ORDER" + orders.incrementAndGet();

@@ -315,8 +315,11 @@ public class PaymentController {
             context.put("user_action", "PAY_NOW");
             context.put("shipping_preference", "NO_SHIPPING");
 
-            context.put("return_url", base + "/?paypal=return&ref=" + rec.paymentId);
-            context.put("cancel_url", base + "/?paypal=cancel&ref=" + rec.paymentId);
+            /* A home expense (HE) payment says so, so the page opens the HE screen at once instead of Pay. */
+            String from = rec.heType == null ? "" : "&from=he";
+
+            context.put("return_url", base + "/?paypal=return&ref=" + rec.paymentId + from);
+            context.put("cancel_url", base + "/?paypal=cancel&ref=" + rec.paymentId + from);
 
             Map<String, Object> order = new HashMap<>();
             order.put("intent", "CAPTURE");

@@ -3192,3 +3192,24 @@ body:not(.auth-mode) { background: #f4f2ec; }
 
     .payment-done .button-row button { padding: 8px 6px; }
 }
+
+/* "Confirming your payment": the card shown while PayPal's answer is awaited */
+
+.done-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(15, 27, 61, 0.14);
+    border-top-color: #c8902a;
+    border-radius: 50%;
+    animation: session-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .done-spinner { animation: none; }
+}
+
+.payment-done.working { padding-top: 22px; padding-bottom: 22px; }
+
+/* A home expense (HE) payment being confirmed: only the waiting card shows, not the HE form. */
+
+#heView.confirming .subtabs, #heView.confirming .tab-panel { display: none; }

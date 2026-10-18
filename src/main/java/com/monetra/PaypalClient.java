@@ -13,6 +13,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -91,7 +92,21 @@ public class PaypalClient {
         return configured() && !clean(webhookId).isEmpty();
     }
 
-    public String accessToken() {
+    /** PayPal's access token and the moment Monetra stops using it. It is good for hours. */
+    private String cachedToken = "";
+    private long cachedUntil = 0;
+
+    /**
+     * An access token. PayPal's tokens last for hours, so one is kept and reused: asking for a new one before
+     * every single call costs a whole extra round trip each time (and a payment makes several calls).
+     */
+    public synchronized String accessToken() {
+        long now = System.currentTimeMillis();
+
+        if (!cachedToken.isEmpty() && now < cachedUntil) {
+            return cachedToken;
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setBasicAuth(clean(clientId), clean(clientSecret));
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -107,11 +122,43 @@ public class PaypalClient {
             throw new IllegalStateException("PayPal did not return an access token.");
         }
 
+        /* Never more than an hour, and two minutes to spare. A reply without a lifetime is not kept. */
+        long seconds = json.get("expires_in") instanceof Number n ? n.longValue() : 0;
+
+        cachedToken = token;
+        cachedUntil = now + Math.max(0L, Math.min(seconds, 3600L) - 120L) * 1000L;
+
         return token;
     }
 
-    /** POST with a JSON body and a fresh access token. */
+    private synchronized boolean tokenKept() {
+        return !cachedToken.isEmpty() && System.currentTimeMillis() < cachedUntil;
+    }
+
+    private synchronized void forgetToken() {
+        cachedToken = "";
+        cachedUntil = 0;
+    }
+
+    /** POST with a JSON body and an access token. A kept token PayPal no longer accepts is replaced once. */
     public Map<String, Object> post(String path, Object body, String requestId) {
+        boolean kept = tokenKept();
+
+        try {
+            return postOnce(path, body, requestId);
+
+        } catch (HttpClientErrorException.Unauthorized e) {
+            if (!kept) {
+                throw e;
+            }
+
+            forgetToken();
+
+            return postOnce(path, body, requestId);
+        }
+    }
+
+    private Map<String, Object> postOnce(String path, Object body, String requestId) {
         HttpHeaders headers = bearer(accessToken());
 
         if (requestId != null) {
@@ -122,7 +169,20 @@ public class PaypalClient {
     }
 
     public Map<String, Object> get(String path) {
-        return exchange(path, HttpMethod.GET, new HttpEntity<>(bearer(accessToken())));
+        boolean kept = tokenKept();
+
+        try {
+            return exchange(path, HttpMethod.GET, new HttpEntity<>(bearer(accessToken())));
+
+        } catch (HttpClientErrorException.Unauthorized e) {
+            if (!kept) {
+                throw e;
+            }
+
+            forgetToken();
+
+            return exchange(path, HttpMethod.GET, new HttpEntity<>(bearer(accessToken())));
+        }
     }
 
     /** Pays {@code usd} dollars to a PayPal email through the Payouts API. */
