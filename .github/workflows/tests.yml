@@ -24,5 +24,6 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # Not quiet on purpose: the log ends with "Tests run: N, Failures: 0, Errors: 0", so the count can be checked.
       - name: Run the tests
-        run: ./mvnw -B -q test
+        run: ./mvnw -B test
