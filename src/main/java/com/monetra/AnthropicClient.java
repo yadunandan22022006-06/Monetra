@@ -50,17 +50,6 @@ public class AnthropicClient implements AiProvider {
     }
 
     @Override
-    public String ask(String system, String userText, int maxTokens) {
-        Ai.Step step = step(system, List.of(Ai.user(userText)), null, maxTokens);
-
-        if (step.text().isEmpty()) {
-            throw new IllegalStateException("Empty AI reply.");
-        }
-
-        return step.text();
-    }
-
-    @Override
     @SuppressWarnings("unchecked")
     public Ai.Step step(String system, List<Ai.Turn> conversation, List<Map<String, Object>> tools, int maxTokens) {
         HttpHeaders headers = new HttpHeaders();

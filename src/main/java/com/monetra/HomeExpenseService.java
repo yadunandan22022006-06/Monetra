@@ -418,18 +418,6 @@ public class HomeExpenseService {
         return created;
     }
 
-    /** Total of unpaid household payments (and how many) due from today until the given day. */
-    public BigDecimal unpaidTotal(Long userId, LocalDate today, int days) {
-        return actionable(userId, today, days).stream()
-                .map(r -> r.expense().amount)
-                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
-    }
-
-    /** Simple helper: every category name that exists, for the add form. */
-    public Set<String> categories() {
-        return Set.copyOf(HomeExpenseRules.CATEGORIES);
-    }
-
     private static String text(Object value, int max) {
         if (value == null) {
             return "";

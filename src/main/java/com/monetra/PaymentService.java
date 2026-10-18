@@ -9,7 +9,6 @@ import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -293,10 +292,5 @@ public class PaymentService {
 
     public static String rupees(BigDecimal value) {
         return Inr.of(value);
-    }
-
-    /** Used by tests. */
-    List<PaymentRecord> allFor(Long userId) {
-        return payments.findByUserIdOrderByCreatedAtDesc(userId);
     }
 }

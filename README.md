@@ -94,7 +94,7 @@ Open <http://localhost:8081>.
 
 1. Copy `.env.example` to a new file named `.env` in the project folder (next to `pom.xml`).
 2. Fill in the values you have (PayPal, Setu, Groq, Claude). An empty value just switches that feature off, and Monetra says so.
-3. Start with `powershell -ExecutionPolicy Bypass -File .\start-local.ps1`. It reads `.env`, never prints a value, and never replaces a value you already set in the terminal. Add `-CheckOnly` to see which keys were found (names only) without starting Monetra.
+3. Start with `powershell -ExecutionPolicy Bypass -File .\start-local.ps1`. It reads `.env`, never prints a value, and never replaces a value you already set in the terminal. Add `-CheckOnly` to see which keys were found (names only) without starting Monetra. If port 8081 is already in use (usually Monetra running in another window), the script says which program has it and does not start; it never closes another program for you. To stop Monetra, press Ctrl+C once in its window, wait for "Graceful shutdown complete" (the saved data in `data/` is closed cleanly), then answer Y.
 
 `.env` is listed in `.gitignore`, so it is never uploaded. `.env.example` holds no real values and is safe to share. `start-local.ps1` is a local helper kept out of Git; on other systems export the same names as environment variables, as shown above. On Render, set the same names in the dashboard (`render.yaml` lists them). If a key was ever shown or uploaded, create a new one at the provider and put the new one in `.env`.
 
