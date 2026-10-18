@@ -157,6 +157,26 @@ body.auth-mode {
 
 body.session-check .session-check-box { display: grid; }
 
+/* a spinner above the message, so the page plainly looks like it is loading */
+
+.session-check-box::before {
+    content: "";
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.22);
+    border-top-color: #f2c45c;
+    border-radius: 50%;
+    animation: session-spin 0.9s linear infinite;
+}
+
+.session-check-box.stopped::before { display: none; }
+
+@keyframes session-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .session-check-box::before { animation: none; }
+}
+
 body.session-check #authCard .seg,
 body.session-check #loginPage,
 body.session-check #registerPage { display: none !important; }
@@ -1079,7 +1099,6 @@ table.table td.num { text-align: right; white-space: nowrap; font-weight: 700; }
 
 .impact-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.alert-title { margin-top: 2px; color: var(--alert-red); font-size: 13px; font-weight: 800; letter-spacing: 0.4px; }
 
 /* Go Back, Adjust Amount, Review Budget, Continue */
 
@@ -2843,157 +2862,333 @@ body:not(.auth-mode) { background: #f4f2ec; }
 }
 
 /* ==========================================================
-   THE GUARDIAN'S REVIEW CARDS (Pay review and HE)
-   A warning is labelled HIGH or MEDIUM RISK; a fine item is the same card in green.
+   THE GUARDIAN'S REVIEW CARDS (Pay review, HE and the other screens)
+   Red = HIGH RISK, amber = MEDIUM RISK, green = LOW RISK / all clear, blue = a plain note.
+   A tinted card with a coloured edge, a pale round badge, an outlined risk label and a lighter "what to do" strip.
    ========================================================== */
 
 .rc {
-    --rc-accent: #c8902a;
-    --rc-soft: #f8ecc8;
-    --rc-text: #0f1b3d;
+    /* the blue (neutral) colours are the default; the tones below replace them */
+    --rc-edge: #4f8bea;
+    --rc-edge2: #b0cbf6;
+    --rc-bg1: #d8e5fb;
+    --rc-bg2: #f1f5fe;
+    --rc-accent: #2c6bd8;
+    --rc-pill: #1f56b9;
+    --rc-pill-line: #5b94ec;
+    --rc-info: #3b82f6;
+    --rc-pad: 14px;
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 12px;
+    gap: 14px;
     align-items: start;
-    padding: 12px 12px 12px 22px;
-    border: 2px solid #0b1f5c;
-    border-radius: 16px;
-    background: #ffffff;
-    color: var(--rc-text);
-    box-shadow: 0 6px 16px rgba(15, 27, 61, 0.09);
+    padding: var(--rc-pad) var(--rc-pad) var(--rc-pad) calc(var(--rc-pad) + 10px);
+    border: 0;
+    border-radius: 22px;
+    background: linear-gradient(160deg, var(--rc-bg1) 0%, var(--rc-bg2) 78%);
+    color: #111827;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
     text-align: left;
 }
 
-.review-notes .rc { margin-top: 8px; }
+/* the thick coloured edge on the left and the thin one along the top */
 
-.rc-bar {
+.rc::before {
+    content: "";
     position: absolute;
-    left: 7px;
-    top: 12px;
-    bottom: 12px;
-    width: 4px;
-    border-radius: 4px;
-    background: linear-gradient(180deg, #ecc35a, #c8902a);
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    background: linear-gradient(180deg, var(--rc-edge) 0%, var(--rc-edge2) 100%);
 }
+
+.rc::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--rc-edge) 0%, var(--rc-edge2) 55%, transparent 100%);
+}
+
+.rc-high {
+    --rc-edge: #ec5a70;
+    --rc-edge2: #f8b6bf;
+    --rc-bg1: #fcdce2;
+    --rc-bg2: #fff2f4;
+    --rc-accent: #d6243f;
+    --rc-pill: #c0203a;
+    --rc-pill-line: #dc5a6e;
+    --rc-info: #ec5a70;
+}
+
+.rc-medium {
+    --rc-edge: #f5a623;
+    --rc-edge2: #fbd592;
+    --rc-bg1: #fde8c2;
+    --rc-bg2: #fff7e5;
+    --rc-accent: #e08a00;
+    --rc-pill: #b45309;
+    --rc-pill-line: #e8a23c;
+    --rc-info: #f2a413;
+}
+
+.rc-low {
+    --rc-edge: #22c07b;
+    --rc-edge2: #9ce4c2;
+    --rc-bg1: #d3f4e1;
+    --rc-bg2: #eefaf3;
+    --rc-accent: #12945c;
+    --rc-pill: #127a4b;
+    --rc-pill-line: #3ec08a;
+    --rc-info: #1fae6e;
+}
+
+.review-notes .rc { margin-top: 10px; }
 
 .rc-icon {
     display: grid;
     place-items: center;
-    width: 44px;
-    height: 44px;
+    width: 54px;
+    height: 54px;
+    border: 1.5px solid rgba(15, 23, 42, 0.07);
     border-radius: 50%;
-    background: var(--rc-soft);
+    background: rgba(255, 255, 255, 0.5);
     color: var(--rc-accent);
-    box-shadow: inset 0 0 0 1px rgba(200, 144, 42, 0.18);
 }
 
-.rc-icon svg.i { width: 23px; height: 23px; stroke-width: 2; }
+.rc-icon svg.i { width: 29px; height: 29px; stroke-width: 2.2; }
 
 .rc-main { min-width: 0; }
 
-.rc-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.rc-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 
 .rc-title {
     flex: 1 1 7em;
     min-width: 0;
-    color: #0b1f5c;
-    font-size: 14px;
+    color: #0f172a;
+    font-size: 16px;
     font-weight: 800;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.1px;
+    line-height: 1.2;
     text-transform: uppercase;
     overflow-wrap: anywhere;
 }
 
 .rc-pill {
     flex: 0 0 auto;
-    padding: 3px 10px;
-    border: 1px solid transparent;
+    padding: 4px 13px;
+    border: 1.5px solid var(--rc-pill-line);
     border-radius: 99px;
-    font-size: 10.5px;
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--rc-pill);
+    font-size: 11.5px;
     font-weight: 800;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
     white-space: nowrap;
 }
 
 .rc p.rc-text {
-    margin: 4px 0 0;
-    color: var(--rc-text);
-    font-size: 13px;
+    margin: 6px 0 0;
+    color: #1f2937;
+    font-size: 13.5px;
     font-weight: 500;
     line-height: 1.45;
     white-space: normal;
     overflow-wrap: anywhere;
 }
 
+/* "what to do": a lighter strip that runs to the right and bottom edge of the card */
+
 .rc-action {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 8px 10px;
-    border-radius: 12px;
-    background: #e4eefc;
-    color: #12306d;
-    font-size: 12.5px;
-    font-weight: 600;
-    line-height: 1.35;
+    gap: 10px;
+    margin: 12px calc(var(--rc-pad) * -1) calc(var(--rc-pad) * -1) 0;
+    padding: 11px var(--rc-pad) 11px 14px;
+    border-radius: 22px 0 0 22px;
+    background: rgba(255, 255, 255, 0.66);
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
 }
 
-.rc-action > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.rc-action-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 
-.rc-action > svg.i:first-child { width: 20px; height: 20px; color: #1d5fd1; }
-
-.rc-high, .rc-medium { --rc-text: #8c1b1b; }
-
-.rc-high .rc-pill { color: #a31616; background: #fde8e8; border-color: #eba8a8; }
-
-.rc-medium .rc-pill { color: #a0501a; background: #fdeadb; border-color: #ebb890; }
-
-/* all clear: the same card in green */
-
-.rc-low { --rc-accent: #1f9d5a; --rc-soft: #dff4e7; --rc-text: #176b3b; border-color: #176b3b; }
-
-.rc-low .rc-bar { background: linear-gradient(180deg, #4cc783, #1f9d5a); }
-
-.rc-low .rc-icon { box-shadow: inset 0 0 0 1px rgba(31, 157, 90, 0.2); }
-
-.rc-low .rc-pill { color: #176b3b; background: #e2f6ea; border-color: #9ad6b3; }
-
-.rc-low .rc-action { background: #e2f6ea; color: #176b3b; }
-
-.rc-low .rc-action > svg.i:first-child { color: #1f9d5a; }
+.rc-info {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--rc-info);
+    color: #ffffff;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+}
 
 /* the Fraud Guard card's reasons and its tick */
 
-.rc .alert-list { margin: 6px 0 0; padding-left: 18px; color: var(--rc-text); font-size: 13px; line-height: 1.45; }
+.rc .alert-list { margin: 6px 0 0; padding-left: 18px; color: #1f2937; font-size: 13px; line-height: 1.45; }
 
-.rc .check-row { margin-top: 8px; color: #0f1b3d; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rc .check-row { margin-top: 8px; color: #0f172a; font-size: 13px; font-weight: 600; cursor: pointer; }
 
-.rc .check-row input { width: 20px; height: 20px; margin-top: 1px; flex: 0 0 auto; accent-color: #c8902a; cursor: pointer; }
+.rc .check-row input { width: 20px; height: 20px; margin-top: 1px; flex: 0 0 auto; accent-color: #ec5a70; cursor: pointer; }
 
-.rc .check-row.needs-tick { padding: 6px 8px; border-radius: 10px; outline: 2px solid #f2c45c; background: rgba(242, 196, 92, 0.15); }
+.rc .check-row.needs-tick { padding: 6px 8px; border-radius: 10px; outline: 2px solid var(--rc-edge); background: rgba(255, 255, 255, 0.55); }
 
-.ask-cards-list { gap: 10px; }
+.ask-cards-list { gap: 12px; }
 
 @media (max-width: 420px) {
-    .rc { gap: 10px; padding: 10px 10px 10px 19px; border-radius: 14px; }
+    .rc { --rc-pad: 12px; gap: 10px; border-radius: 18px; }
 
-    .rc-bar { left: 6px; top: 10px; bottom: 10px; }
+    .rc::before { width: 6px; }
 
-    .rc-icon { width: 38px; height: 38px; }
+    .rc-icon { width: 42px; height: 42px; }
 
-    .rc-icon svg.i { width: 20px; height: 20px; }
+    .rc-icon svg.i { width: 23px; height: 23px; }
 
-    .rc-title { font-size: 13px; }
+    .rc-title { font-size: 14px; }
 
-    .rc-pill { padding: 2px 8px; font-size: 10px; }
+    .rc-pill { padding: 3px 10px; font-size: 10.5px; }
 
     .rc p.rc-text { font-size: 12.5px; }
 
-    .rc-action { padding: 7px 9px; font-size: 12px; }
+    .rc-action { gap: 8px; padding: 9px var(--rc-pad) 9px 12px; border-radius: 18px 0 0 18px; font-size: 12px; }
+
+    .rc-info { width: 22px; height: 22px; font-size: 14px; }
 }
 
 /* the same cards on the other screens (Spending, Loans, Goals, Forecast, Buy Planner, Scam Shield) */
 
 :where(.loan-plan, #loanRiskText, #loanForecast, #spendingAlert, #forecastAi, #planResult, #scamResult, .goal-item) .rc { margin-top: 8px; }
+
+/* ==========================================================
+   WHAT HAPPENED TO THE PAYMENT (shown when PayPal sends the user back)
+   ========================================================== */
+
+.payment-done { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+
+.done-badge {
+    display: grid;
+    place-items: center;
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    background: rgba(31, 157, 90, 0.14);
+    color: #1f9d5a;
+}
+
+.done-badge svg.i { width: 40px; height: 40px; stroke-width: 2.2; }
+
+.payment-done.cancelled .done-badge { background: rgba(107, 113, 131, 0.16); color: #6b7183; }
+
+.payment-done.failed .done-badge { background: rgba(220, 38, 38, 0.12); color: #dc2626; }
+
+.payment-done.pending .done-badge, .payment-done.waiting .done-badge { background: rgba(217, 119, 6, 0.14); color: #d97706; }
+
+.payment-done h2.done-title { display: block; margin: 2px 0 0; font-size: 21px; color: var(--text); }
+
+.done-amount { font-size: 34px; font-weight: 800; line-height: 1.1; color: #16a34a; }
+
+.done-sub { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+
+.done-text, .done-note, .done-error { margin: 0; max-width: 34em; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.done-note { color: var(--muted); font-size: 12.5px; }
+
+.done-error { color: #dc2626; }
+
+.payment-done .stat-grid { width: 100%; margin: 4px 0 0; text-align: left; }
+
+.payment-done .stat .v { font-size: 14.5px; overflow-wrap: anywhere; }
+
+.payment-done .stat.wide { grid-column: 1 / -1; }
+
+.payment-done .button-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; width: 100%; margin-top: 6px; }
+
+/* the result card is compact, so it fits the screen with its buttons and nothing has to be scrolled */
+
+.payment-done { gap: 6px; padding-top: 12px; padding-bottom: 12px; }
+
+.done-badge { width: 46px; height: 46px; }
+
+.done-badge svg.i { width: 28px; height: 28px; }
+
+.payment-done h2.done-title { margin: 0; font-size: 18px; }
+
+.done-amount { font-size: 28px; }
+
+.done-sub { font-size: 13px; line-height: 1.35; }
+
+.payment-done .stat-grid { gap: 6px; margin-top: 2px; }
+
+.payment-done .stat { padding: 6px 10px; border-radius: 14px; }
+
+.payment-done .stat .l { font-size: 11.5px; }
+
+.payment-done .stat .v { margin-top: 1px; font-size: 14px; }
+
+.done-note { font-size: 12px; }
+
+.payment-done .button-row { margin-top: 4px; }
+
+.payment-done .button-row button { padding: 10px 8px; }
+
+/* whatever the screen, the buttons stay in view: they are pinned to the bottom of the card */
+
+.payment-done .button-row { position: sticky; bottom: 0; z-index: 2; padding-top: 6px; background: #ffffff; }
+
+/* wide screens: the four details sit in one row */
+
+@media (min-width: 700px) {
+    .payment-done .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .payment-done .stat.wide { grid-column: auto; }
+}
+
+/* short screens: the small print goes and everything is a little tighter */
+
+@media (max-height: 700px) {
+    .payment-done { gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+
+    .done-badge { width: 38px; height: 38px; }
+
+    .done-badge svg.i { width: 23px; height: 23px; }
+
+    .payment-done h2.done-title { font-size: 16.5px; }
+
+    .done-amount { font-size: 24px; }
+
+    .done-note { display: none; }
+
+    .payment-done .stat { padding: 4px 8px; }
+}
+
+/* the smallest phones: only the date and PayPal's transaction ID stay beside each other */
+
+@media (max-height: 620px) {
+    .payment-done .stat.minor { display: none; }
+
+    .payment-done .stat.wide { grid-column: auto; }
+
+    .done-badge { width: 34px; height: 34px; }
+
+    .done-badge svg.i { width: 21px; height: 21px; }
+
+    .payment-done h2.done-title { font-size: 16px; }
+
+    .done-amount { font-size: 22px; }
+
+    .done-sub { font-size: 12.5px; }
+
+    .payment-done .button-row button { padding: 8px 6px; }
+}

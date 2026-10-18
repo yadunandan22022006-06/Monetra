@@ -19,6 +19,7 @@ const STATUS_LABELS = {
     CREATED: 'Created',
     AWAITING_APPROVAL: 'Awaiting approval',
     COMPLETED: 'Completed',
+    PENDING: 'Pending',
     CANCELLED: 'Cancelled',
     FAILED: 'Failed'
 };
@@ -809,7 +810,11 @@ async function sessionExpired() {
     }
 }
 
-/* `returning`: back from PayPal, so the Pay screen opens at once with the result and Home is not shown first. */
+/*
+ * Nothing of the app is shown until it is ready: the loading screen (or the sign-in screen) stays until the user's
+ * records have arrived, then the right screen appears complete. `returning`: back from PayPal, so that screen is
+ * Pay with its result, and Home is never shown first.
+ */
 
 async function openDashboard(profile, returning) {
     me = {
@@ -822,19 +827,6 @@ async function openDashboard(profile, returning) {
     $('dashboardUser').textContent = me.email;
     $('dashboardAvatar').textContent = (me.name || me.email).charAt(0).toUpperCase();
 
-    $('authCard').classList.add('hidden');
-
-    if (returning) {
-        /* The Pay screen is the first thing shown, before anything is loaded, so Home never flashes by. */
-        navigateTo('paymentView');
-
-        showPaymentResult('Checking your payment with PayPal...', '');
-    }
-
-    $('dashboardPage').classList.remove('hidden');
-
-    document.body.classList.remove('auth-mode');
-
     await loadRecords();
 
     adoptAccountPrefs();
@@ -842,22 +834,36 @@ async function openDashboard(profile, returning) {
     renderAll();
 
     if (returning) {
-        /* The payment is checked straight away; the lists and figures load in the background. */
-        loadPayments();
+        navigateTo('paymentView');
+
+        showPaymentResult('Checking your payment with PayPal...', '');
+
+    } else {
+        /* Opening Home also loads the Guardian's figures (and the score), once. */
+        navigateTo('homeView');
+    }
+
+    $('authCard').classList.add('hidden');
+    $('dashboardPage').classList.remove('hidden');
+
+    document.body.classList.remove('auth-mode', 'session-check');
+
+    queueBand();
+
+    if (returning) {
+        /* The payment is checked straight away; its own code then loads the payments, HE and notifications. */
         loadOverview();
 
     } else {
-        /* Opening Home already loads the Guardian's figures (and the score), once. */
-        navigateTo('homeView');
-
         await loadPayments();
+
+        loadHe();
+        loadNotifications(false);
+        warmAi();
     }
 
-    loadHe();
-    loadNotifications(false);
     loadForecast(false);
     loadGuardianBadge();
-    warmAi();
 
     clearInterval(pollTimer);
 
@@ -1258,6 +1264,11 @@ function showPayTab(tab) {
 
     $('sendPanel').classList.toggle('hidden', !send);
     $('receivePanel').classList.toggle('hidden', send);
+
+    /* Opening Pay (or its Send tab) again leaves the last result and shows the payment form. */
+    if (send) {
+        hidePaymentDone();
+    }
 
     if (!send) {
         stopScan();
@@ -1932,14 +1943,85 @@ function applyScan(payeeInfo) {
     return true;
 }
 
+/* Why the camera could not be opened, in words the user can act on. */
+
+function cameraProblem(error) {
+    const name = error && error.name;
+
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return 'The camera is blocked. Allow the camera for this site (the camera icon in the address bar), then press ' +
+            'Open camera again. Or choose a QR image instead.';
+    }
+
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        return 'No camera was found on this device. Choose a QR image instead.';
+    }
+
+    if (name === 'NotReadableError') {
+        return 'Another app is using the camera. Close it and try again, or choose a QR image instead.';
+    }
+
+    return 'The camera could not be opened. Choose a QR image instead.';
+}
+
+/*
+ * Something that finds a QR code in the live picture. A browser that has its own reader (BarcodeDetector) uses it.
+ * Most desktop browsers do not, so there a frame of the picture is sent to Monetra's own server, which reads it
+ * with the same reader as an uploaded photo and does not keep it. Gives the code's text, or null when none is seen.
+ */
+
+function makeQrReader() {
+    if ('BarcodeDetector' in window) {
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+
+        return { every: 350, read: async video => {
+            const found = await detector.detect(video);
+
+            return found.length ? found[0].rawValue : null;
+        } };
+    }
+
+    const canvas = document.createElement('canvas');
+
+    return { every: 900, read: async video => {
+        if (!video.videoWidth) {
+            return null;
+        }
+
+        const scale = Math.min(1, 640 / video.videoWidth);
+
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
+
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+
+        if (!blob) {
+            return null;
+        }
+
+        const response = await fetch('/api/qr/decode?live=1', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: blob
+        });
+
+        const data = response.ok ? await response.json() : null;
+
+        return data && data.text ? data.text : null;
+    } };
+}
+
 async function startScan(which) {
     stopScan();
 
     scanner = which || SCANNERS.pay;
 
-    if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        $(scanner.message).textContent =
-            'Live scanning is not supported in this browser. Use "Choose QR image" to upload a photo or screenshot of the code.';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        $(scanner.message).textContent = window.isSecureContext === false
+            ? 'The camera only works on a secure page (https, or localhost). Choose a QR image instead.'
+            : 'This browser cannot open the camera. Choose a QR image to upload a photo or screenshot of the code.';
         return;
     }
 
@@ -1950,8 +2032,7 @@ async function startScan(which) {
         });
 
     } catch (error) {
-        $(scanner.message).textContent =
-            'Camera permission was not given. Allow the camera, or choose a QR image instead.';
+        $(scanner.message).textContent = cameraProblem(error);
         return;
     }
 
@@ -1965,24 +2046,31 @@ async function startScan(which) {
     $(scanner.start).textContent = 'Stop camera';
     $(scanner.message).textContent = 'Point the camera at the QR code...';
 
-    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    const reader = makeQrReader();
+
+    let reading = false;
 
     scanTimer = setInterval(async function() {
+        if (reading) {
+            return;   /* the last picture is still being read */
+        }
+
+        reading = true;
+
         try {
-            const found = await detector.detect(video);
+            const text = await reader.read(video);
 
-            if (found.length) {
-                const ok = scanner.read(parseQr(found[0].rawValue));
-
-                if (ok) {
-                    stopScan();
-                }
+            if (text && scanStream && scanner.read(parseQr(text))) {
+                stopScan();
             }
 
         } catch (error) {
-            /* Keep trying on the next frame. */
+            /* Keep trying on the next picture. */
+
+        } finally {
+            reading = false;
         }
-    }, 350);
+    }, reader.every);
 }
 
 function stopScan() {
@@ -2243,20 +2331,21 @@ function riskChip(text, level) {
  */
 
 const REVIEW_ICONS = [
-    [/LIMIT EXCEEDED/, 'warn', 'wallet'],
-    [/PAYMENT RISK/, 'card', 'card'],
-    [/LOAN|EMI|BILLS/, 'bank', 'bulb'],
-    [/BALANCE|SPENDING LIMITS/, 'wallet', 'bulb'],
-    [/SAVINGS|GOAL/, 'target', 'bulb'],
-    [/FRAUD/, 'shield', 'bulb']
+    [/LIMIT EXCEEDED/, 'warn'],
+    [/PAYMENT RISK/, 'card'],
+    [/LOAN|EMI|BILLS/, 'bank'],
+    [/SPENDING LIMITS/, 'cal'],
+    [/BALANCE/, 'wallet'],
+    [/SAVINGS|GOAL/, 'target'],
+    [/FRAUD/, 'shield']
 ];
 
-/* The picture on the left and the picture in the "what to do" strip. */
+/* The picture in the round badge on the left of a card. */
 
-function reviewIcons(title) {
+function reviewIcon(title) {
     const found = REVIEW_ICONS.find(row => row[0].test(title));
 
-    return found ? [found[1], found[2]] : ['shield', 'bulb'];
+    return found ? found[1] : 'shield';
 }
 
 /* How serious a card is: the server's own level for its area, else a fixed one. Empty = no label. */
@@ -2305,37 +2394,60 @@ function reviewLevel(card, guardian) {
     return '';
 }
 
-/* Some cards the server sends without a "what to do". */
+/* Some cards the server sends without a "what to do": every card has its strip, as in the design. */
 
-function reviewAction(card) {
+function reviewAction(card, level) {
     if (card.action) {
         return card.action;
     }
 
-    return /PAYMENT RISK/i.test(card.title || '')
-        ? 'Limit this payment or split it into smaller instalments to reduce risk.'
-        : '';
+    const title = String(card.title || '').toUpperCase();
+
+    if (/PAYMENT RISK/.test(title)) {
+        return 'Limit this payment or split it into smaller instalments to reduce risk.';
+    }
+
+    if (level === 'LOW') {
+        if (/LOANS AND BILLS/.test(title)) {
+            return 'No immediate action needed. Keep monitoring upcoming bills.';
+        }
+
+        if (/SPENDING LIMITS/.test(title)) {
+            return 'No immediate action needed. Keep an eye on your spending.';
+        }
+
+        if (/SAVINGS GOAL/.test(title)) {
+            return 'No immediate action needed. Keep saving towards your goal.';
+        }
+    }
+
+    return '';
+}
+
+/* The card for something the Guardian found: its level, its picture and its "what to do" worked out together. */
+
+function reviewCardFor(card, guardian, tone) {
+    const level = reviewLevel(card, guardian);
+
+    return reviewCard(card.title, card.text, reviewAction(card, level), level, tone);
 }
 
 /*
- * One review card. `level` is HIGH, MEDIUM or LOW (shown as "HIGH RISK" ...) or empty for a plain gold card;
- * `tone` only changes the colour when the level is empty; `picture` chooses the round icon instead of the one the
- * title suggests. Returns the card, its text and its "what to do" words, so a later answer (the AI's advice) can
- * replace them.
+ * One review card, in the colour of its level: red for HIGH, amber for MEDIUM, green for LOW and blue for a plain
+ * note with no level. `level` is HIGH, MEDIUM or LOW (shown as "HIGH RISK" ...) or empty; `tone` only chooses
+ * the colour when the level is empty (a review with nothing to warn about passes "low", so everything is green);
+ * `picture` chooses the round icon instead of the one the title suggests. Returns the card, its text and its
+ * "what to do" words, so a later answer (the AI's advice) can replace them.
  */
 
 function reviewCard(title, text, action, level, tone, picture) {
     const kind = level ? level.toLowerCase() : (tone || 'none');
-    const [suggested, strip] = reviewIcons(title);
-    const lead = picture || suggested;
 
     const item = makeElement('div', 'rc rc-' + kind);
 
-    item.appendChild(makeElement('span', 'rc-bar'));
-
     const round = makeElement('span', 'rc-icon');
 
-    round.appendChild(icon('i-' + lead));
+    round.appendChild(icon('i-' + (picture || reviewIcon(title))));
     item.appendChild(round);
 
     const main = makeElement('div', 'rc-main');
@@ -2358,9 +2470,9 @@ function reviewCard(title, text, action, level, tone, picture) {
     if (action) {
         const row = makeElement('div', 'rc-action');
 
-        actionText = makeElement('span', '', action);
+        actionText = makeElement('span', 'rc-action-text', action);
 
-        row.appendChild(icon('i-' + strip));
+        row.appendChild(makeElement('span', 'rc-info', 'i'));
         row.appendChild(actionText);
 
         main.appendChild(row);
@@ -2435,20 +2547,17 @@ function guardianAlertCards(check, risk) {
 
     const wrap = makeElement('div', 'ask-cards-list');
 
-    const show = card => wrap.appendChild(
-        reviewCard(card.title, card.text, reviewAction(card), reviewLevel(card, guardian)).item);
+    const show = (card, tone) => wrap.appendChild(reviewCardFor(card, guardian, tone).item);
 
     if (!found.length && !flags.length) {
-        /* Nothing to warn about: what is fine, in the same cards but green. */
+        /* Nothing to warn about: what is fine, in the same cards but all green. */
 
-        reviewExtras(check || {}).filter(card => !card.warn).forEach(show);
+        reviewExtras(check || {}).filter(card => !card.warn).forEach(card => show(card, 'low'));
 
         return { node: wrap.children.length ? wrap : null, warn: false };
     }
 
-    wrap.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
-
-    found.forEach(show);
+    found.forEach(card => show(card));
 
     if (flags.length) {
         const fraud = reviewCard('FRAUD GUARD', 'Please check this payment.', '', 'MEDIUM');
@@ -2535,10 +2644,7 @@ function renderGuardianReview(guardian, extras, risk) {
 
     extras.forEach(e => items.push(e));
 
-    box.appendChild(makeElement('div', 'alert-title', '🔴 GUARDIAN AI — PAYMENT ALERT'));
-
-    items.forEach(card => box.appendChild(
-        reviewCard(card.title, card.text, reviewAction(card), reviewLevel(card, guardian)).item));
+    items.forEach(card => box.appendChild(reviewCardFor(card, guardian).item));
 
     if (flagged) {
         box.appendChild(fraudBox(risk));
@@ -2657,7 +2763,8 @@ async function startReview() {
     rules.replaceChildren();
 
     if (!warn) {
-        extras.forEach(e => rules.appendChild(reviewCard(e.title, e.text, e.action, reviewLevel(e, guardian)).item));
+        /* Nothing to warn about: everything is green. */
+        extras.forEach(e => rules.appendChild(reviewCardFor(e, guardian, 'low').item));
     }
 
     requestAiAdvice(decisionText, run);
@@ -2835,60 +2942,234 @@ async function confirmPayment(token) {
     }
 }
 
-async function handlePaypalReturn(params) {
+/*
+ * What the user is told when PayPal sends them back: one card that says what really happened. "Payment Successful"
+ * is only for a payment the server has confirmed with PayPal, and it shows PayPal's transaction id. A cancelled one,
+ * one that PayPal is still reviewing, one that is not confirmed yet and one that failed each have their own wording
+ * and are never dressed up as a success. The form is hidden while the card is shown, so the user sees the result,
+ * not the payment options again.
+ */
+
+const DONE_ICONS = { success: 'i-check', cancelled: 'i-cross', failed: 'i-warn', pending: 'i-clock', waiting: 'i-clock' };
+
+/* Back to the payment form: used by every button that leaves the card, and by opening Pay again. */
+
+function hidePaymentDone() {
+    const card = $('paymentDone');
+
+    if (card.classList.contains('hidden')) {
+        return;
+    }
+
+    card.classList.add('hidden');
+    card.replaceChildren();
+
+    $('paymentResult').classList.add('hidden');
+    $('paymentForm').classList.remove('hidden');
+}
+
+function showPaymentDone(kind, title, payment, text, ref) {
+    const card = $('paymentDone');
+
+    card.replaceChildren();
+    card.className = 'card payment-done ' + kind;
+
+    const badge = makeElement('div', 'done-badge');
+
+    badge.appendChild(icon(DONE_ICONS[kind] || 'i-warn'));
+    card.appendChild(badge);
+
+    card.appendChild(makeElement('h2', 'done-title', title));
+
+    if (kind === 'success') {
+        card.appendChild(makeElement('div', 'done-amount', money(payment.amountInr)));
+
+        card.appendChild(makeElement('p', 'done-sub',
+            'sent to ' + payment.counterparty + ' (' + usd(payment.amountUsd) + ' charged through PayPal)'));
+
+        const grid = makeElement('div', 'stat-grid two');
+
+        /* "minor" details are the ones a very short screen leaves out (the title already says it was completed). */
+        const status = statBox('Status', 'Completed', 'var(--green)');
+
+        status.classList.add('minor');
+        grid.appendChild(status);
+
+        grid.appendChild(statBox('Date', displayDateTime(payment.createdAt)));
+
+        if (payment.transactionId) {
+            const transaction = statBox('Transaction ID', payment.transactionId);
+
+            transaction.classList.add('wide');
+            grid.appendChild(transaction);
+        }
+
+        const reference = statBox('Reference', String(payment.paymentId || ref).slice(0, 8));
+
+        reference.classList.add('minor');
+        grid.appendChild(reference);
+
+        card.appendChild(grid);
+
+        card.appendChild(makeElement('p', 'done-note', 'Confirmed by PayPal and saved in your transactions.'));
+
+    } else {
+        if (payment && payment.amountInr !== undefined && payment.amountInr !== null) {
+            card.appendChild(makeElement('div', 'done-sub',
+                money(payment.amountInr) + (payment.counterparty ? ' to ' + payment.counterparty : '')));
+        }
+
+        card.appendChild(makeElement('p', 'done-text', text));
+    }
+
+    const buttons = makeElement('div', 'button-row');
+
+    const add = (label, onClick, gold) => {
+        const button = makeElement('button', gold ? 'btn-gold' : '', label);
+
+        button.type = 'button';
+        button.addEventListener('click', () => onClick(button));
+
+        buttons.appendChild(button);
+    };
+
+    if (kind === 'success') {
+        add('View transactions', () => navigateTo('transactionView'));
+        add('Done', () => navigateTo('homeView'), true);
+
+    } else if (kind === 'pending' || kind === 'waiting') {
+        add('Back to Pay', hidePaymentDone);
+        add('Check again', button => checkPaymentAgain(ref, button, card), true);
+
+    } else if (kind === 'cancelled') {
+        add('Back to Pay', hidePaymentDone, true);
+
+    } else {
+        add('View transactions', () => navigateTo('transactionView'));
+        add('Try again', hidePaymentDone, true);
+    }
+
+    card.appendChild(buttons);
+
+    $('paymentResult').classList.add('hidden');
+    $('paymentForm').classList.add('hidden');
+    $('reviewPanel').classList.add('hidden');
+
+    card.classList.remove('hidden');
+}
+
+/* The card for what the server said about a payment (its record), by what really happened to it. */
+
+function presentPaymentResult(payment, ref) {
+    const status = String(payment.status || '');
+
+    if (status === 'COMPLETED') {
+        showPaymentDone('success', 'Payment Successful', payment, '', ref);
+
+    } else if (status === 'CANCELLED') {
+        showPaymentDone('cancelled', 'Payment cancelled', payment, 'No money was taken.', ref);
+
+    } else if (status === 'PENDING') {
+        showPaymentDone('pending', 'Payment pending', payment,
+            payment.message || 'PayPal is still reviewing this payment. It is not confirmed yet.', ref);
+
+    } else if (status === 'AWAITING_APPROVAL' || status === 'CREATED') {
+        showPaymentDone('waiting', 'Payment not confirmed yet', payment,
+            payment.message || 'Still waiting for you to approve this payment on PayPal. Nothing has been charged.', ref);
+
+    } else {
+        showPaymentDone('failed', 'Payment not completed', payment,
+            payment.message || 'PayPal did not confirm this payment. Nothing has been charged.', ref);
+    }
+}
+
+/* The server could not say (slow, busy, not approved yet) or refused: the payment is not shown as paid. */
+
+async function presentPaymentFailure(error, ref) {
+    const text = String(error && error.message || 'Monetra could not reach the server.');
+
+    const notApprovedYet = error && error.status === 409 && /not been approved/i.test(text);
+    const unknown = !error || !error.status || error.status >= 500;
+
+    /*
+     * A busy PayPal and a declined payment both come back as an error, so the page asks the server where the
+     * payment really stands (it may have failed for good, or still be open) and shows that.
+     */
+
+    if (unknown && ref) {
+        try {
+            presentPaymentResult(await postJson('/api/payments/' + encodeURIComponent(ref) + '/refresh', {}, 30000), ref);
+
+            return;
+
+        } catch (ignored) {
+            /* Still not known: the card below says so. */
+        }
+    }
+
+    if (notApprovedYet) {
+        showPaymentDone('waiting', 'Payment not confirmed yet', null, text + ' Nothing has been charged.', ref);
+
+    } else if (unknown) {
+        showPaymentDone('waiting', 'Payment not confirmed yet', null,
+            text + ' Your payment is safe. Press Check again in a moment.', ref);
+
+    } else {
+        showPaymentDone('failed', 'Payment not completed', null, text, ref);
+    }
+}
+
+/* Asks PayPal, through the server, where the payment really stands, and shows the right card. */
+
+async function checkPaymentAgain(ref, button, card) {
+    button.disabled = true;
+    button.textContent = 'Checking...';
+
+    try {
+        const payment = await postJson('/api/payments/' + encodeURIComponent(ref) + '/refresh', {}, 30000);
+
+        presentPaymentResult(payment, ref);
+
+        await loadPayments();
+
+        loadNotifications(false);
+
+    } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Check again';
+
+        card.querySelectorAll('.done-error').forEach(line => line.remove());
+        card.insertBefore(makeElement('p', 'done-error', 'Could not check just now: ' + error.message), card.querySelector('.button-row'));
+    }
+}
+
+/* `early`: the server's answer, already asked for while the page was opening (see init); none after a sign-in. */
+
+async function handlePaypalReturn(params, early) {
     const flow = params.get('paypal');
     const ref = params.get('ref') || '';
     const token = params.get('token') || '';
 
     navigateTo('paymentView');
 
-    /* A home expense (HE) payment reports its result on the HE screen instead of Pay. */
+    showPaymentResult('Checking your payment with PayPal...', '');
 
-    let he = false;
-    let shown = null;
-
-    const show = (text, kind) => {
-        shown = { text, kind };
-
-        showPaymentResult(text, kind);
-    };
-
-    show('Checking your payment with PayPal...', '');
+    let payment = null;
+    let failure = null;
+    let note = null;
 
     try {
         if (flow === 'cancel') {
-            const cancelled = await postJson('/api/payments/' + encodeURIComponent(ref) + '/cancel', {}, 15000);
-
-            he = !!(cancelled && cancelled.heType);
-
-            show('Payment cancelled. No money was taken.', 'bad-box');
+            payment = await (early || postJson('/api/payments/' + encodeURIComponent(ref) + '/cancel', {}, 15000));
 
         } else if (flow === 'return' && token) {
-            const payment = await confirmPayment(token);
+            payment = await (early || confirmPayment(token));
 
-            he = !!payment.heType;
-
-            if (payment.status === 'COMPLETED') {
-                show(
-                    '✅ Payment completed and confirmed: ' + money(payment.amountInr) +
-                    ' (' + usd(payment.amountUsd) + ') to ' + payment.counterparty +
-                    '. Reference ' + String(payment.paymentId).slice(0, 8) + '.',
-                    'good-box'
-                );
-
-            } else {
-                show(
-                    'The payment was not completed (status: ' +
-                    (STATUS_LABELS[payment.status] || payment.status) + '). ' + (payment.message || ''),
-                    'bad-box'
-                );
-            }
-
-            /* Confirmed or failed: the chosen sound or vibration, once (the browser may not allow it yet). */
+            /* Confirmed or not: the chosen sound or vibration, once (the browser may not allow it yet). */
             notifyAlert();
 
         } else {
-            show('This payment link is not valid.', 'bad-box');
+            note = { text: 'This payment link is not valid.', kind: 'bad-box' };
         }
 
     } catch (error) {
@@ -2897,23 +3178,39 @@ async function handlePaypalReturn(params) {
 
             savePendingReturn(params);
 
-            show('Your session ended before Monetra could confirm this payment. Sign in again and it will be checked then.', 'bad-box');
+            note = { text: 'Your session ended before Monetra could confirm this payment. Sign in again and it will be checked then.', kind: 'bad-box' };
 
         } else {
-            show(
-                'Monetra could not confirm this payment: ' + error.message +
-                ' Open Transactions and press Refresh to check it again.',
-                'bad-box'
-            );
+            failure = error;
         }
     }
 
-    if (he) {
+    if (payment && payment.heType) {
+        /* A home expense (HE) payment reports its result on the HE screen instead of Pay. */
+
+        const status = String(payment.status || '');
+
+        const text = status === 'COMPLETED'
+            ? '✅ Payment completed and confirmed: ' + money(payment.amountInr) + ' (' + usd(payment.amountUsd) + ') to ' +
+                payment.counterparty + '. Reference ' + String(payment.paymentId).slice(0, 8) + '.'
+            : status === 'CANCELLED'
+                ? 'Payment cancelled. No money was taken.'
+                : 'The payment was not completed (status: ' + (STATUS_LABELS[status] || status) + '). ' + (payment.message || '');
+
         $('paymentResult').classList.add('hidden');
 
         navigateTo('heView');
 
-        showPaymentResult(shown.text, shown.kind, 'heResult');
+        showPaymentResult(text, status === 'COMPLETED' ? 'good-box' : 'bad-box', 'heResult');
+
+    } else if (payment) {
+        presentPaymentResult(payment, ref);
+
+    } else if (failure) {
+        await presentPaymentFailure(failure, ref);
+
+    } else if (note) {
+        showPaymentResult(note.text, note.kind);
     }
 
     await loadPayments();
@@ -6818,9 +7115,15 @@ function savePendingReturn(params) {
     }
 }
 
+/* True only while the saved details are still usable (the same rule as takePendingReturn). */
+
 function hasPendingReturn() {
     try {
-        return !!sessionStorage.getItem(PENDING_RETURN_KEY);
+        const raw = sessionStorage.getItem(PENDING_RETURN_KEY);
+        const saved = raw ? JSON.parse(raw) : null;
+
+        return !!saved && Date.now() - Number(saved.at) < 30 * 60 * 1000;
+
     } catch (error) {
         return false;
     }
@@ -6895,6 +7198,9 @@ async function checkSession(onWait) {
 function showSessionCheck(text, retry) {
     $('sessionCheckText').textContent = text;
     $('sessionRetry').classList.toggle('hidden', !retry);
+
+    /* The spinner stops when the server cannot be reached: nothing is loading any more. */
+    $('sessionCheck').classList.toggle('stopped', !!retry);
 }
 
 async function init() {
@@ -6921,7 +7227,31 @@ async function init() {
     /* Back from Setu's consent screens. */
     const bankReturn = params.get('bank') === 'return';
 
-    showSessionCheck(returning ? 'Checking your PayPal payment...' : 'Opening Monetra...', false);
+    /*
+     * Back from PayPal: the payment is confirmed at once, while the page is still finding out who is signed in.
+     * The server confirms each payment once (a repeat gets the stored result), so asking early is safe; the
+     * answer is used below, and if nobody is signed in the details are kept for after sign-in.
+     */
+
+    let early = null;
+
+    if (returning) {
+        const flow = params.get('paypal');
+        const token = params.get('token') || '';
+
+        if (flow === 'return' && token) {
+            early = confirmPayment(token);
+
+        } else if (flow === 'cancel') {
+            early = postJson('/api/payments/' + encodeURIComponent(params.get('ref') || '') + '/cancel', {}, 15000);
+        }
+
+        if (early) {
+            early.catch(() => { /* read again when the result is shown */ });
+        }
+    }
+
+    showSessionCheck(returning ? 'Back from PayPal. Confirming your payment...' : 'Opening Monetra...', false);
 
     /* The server session tells us who is logged in, even after a refresh. */
 
@@ -6929,7 +7259,7 @@ async function init() {
 
     try {
         profile = await checkSession(() => showSessionCheck(
-            returning ? 'Still checking your PayPal payment. The server is slow to answer...'
+            returning ? 'Still confirming your payment. The server is slow to answer...'
                 : 'The server is slow to answer. Still trying...', false));
 
     } catch (error) {
@@ -6940,8 +7270,6 @@ async function init() {
         return;
     }
 
-    document.body.classList.remove('session-check');
-
     if (returning || bankReturn) {
         /* Remove the PayPal or Setu parameters so a refresh cannot repeat the request. */
 
@@ -6949,6 +7277,8 @@ async function init() {
     }
 
     if (!profile || !profile.email) {
+        document.body.classList.remove('session-check');
+
         if (returning) {
             /* Nobody is signed in: keep the details, and finish the check after sign-in. */
 
@@ -6963,7 +7293,7 @@ async function init() {
     await openDashboard(profile, returning);
 
     if (returning) {
-        await handlePaypalReturn(params);
+        await handlePaypalReturn(params, early);
     }
 
     if (bankReturn) {
