@@ -25,6 +25,12 @@ final class FakePaypal {
     /** What Monetra sent each time it created an order. */
     final List<String> orderRequests = new CopyOnWriteArrayList<>();
 
+    /** How the next captures go: OK, NOT_APPROVED, DECLINED, BUSY (HTTP 503), WRONG_AMOUNT or PENDING. */
+    volatile String captureMode = "OK";
+
+    /** How many capture requests PayPal has received. */
+    final AtomicInteger captures = new AtomicInteger();
+
     FakePaypal() {
         try {
             server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -48,6 +54,7 @@ final class FakePaypal {
         String path = ex.getRequestURI().getPath();
         String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String reply;
+        int status = 200;
 
         if (path.equals("/v1/oauth2/token")) {
             reply = "{\"access_token\":\"fake-token\"}";
@@ -66,10 +73,29 @@ final class FakePaypal {
 
         } else if (path.matches("/v2/checkout/orders/[A-Z0-9]+/capture")) {
             String id = path.split("/")[4];
+            String mode = captureMode;
+
+            captures.incrementAndGet();
+
+            String value = "WRONG_AMOUNT".equals(mode) ? "0.01" : orderValues.get(id);
+            String captureStatus = "PENDING".equals(mode) ? "PENDING" : "COMPLETED";
 
             reply = "{\"status\":\"COMPLETED\",\"purchase_units\":[{\"payments\":{\"captures\":["
-                    + "{\"id\":\"CAP-" + id + "\",\"status\":\"COMPLETED\",\"amount\":"
-                    + "{\"currency_code\":\"USD\",\"value\":\"" + orderValues.get(id) + "\"}}]}}]}";
+                    + "{\"id\":\"CAP-" + id + "\",\"status\":\"" + captureStatus + "\",\"amount\":"
+                    + "{\"currency_code\":\"USD\",\"value\":\"" + value + "\"}}]}}]}";
+
+            if ("NOT_APPROVED".equals(mode)) {
+                status = 422;
+                reply = "{\"name\":\"UNPROCESSABLE_ENTITY\",\"details\":[{\"issue\":\"ORDER_NOT_APPROVED\"}]}";
+
+            } else if ("DECLINED".equals(mode)) {
+                status = 422;
+                reply = "{\"name\":\"UNPROCESSABLE_ENTITY\",\"details\":[{\"issue\":\"INSTRUMENT_DECLINED\"}]}";
+
+            } else if ("BUSY".equals(mode)) {
+                status = 503;
+                reply = "{\"name\":\"SERVICE_UNAVAILABLE\"}";
+            }
 
         } else if (path.matches("/v2/checkout/orders/[A-Z0-9]+")) {
             reply = "{\"status\":\"APPROVED\"}";
@@ -98,7 +124,7 @@ final class FakePaypal {
         byte[] bytes = reply.getBytes(StandardCharsets.UTF_8);
 
         ex.getResponseHeaders().add("Content-Type", "application/json");
-        ex.sendResponseHeaders(200, bytes.length);
+        ex.sendResponseHeaders(status, bytes.length);
         ex.getResponseBody().write(bytes);
         ex.close();
     }

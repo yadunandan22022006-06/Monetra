@@ -28,7 +28,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * PayPal Sandbox payments for Monetra.
@@ -57,6 +59,12 @@ public class PaymentController {
 
     @Value("${monetra.inr-per-usd:88}")
     private BigDecimal inrPerUsd;
+
+    /** A second click on the same payment within this time gets the first order back instead of a new one. */
+    private static final long DOUBLE_CLICK_SECONDS = 8;
+
+    /** The PayPal approval address of each order made a moment ago, for the repeated click above. */
+    private final Map<String, String> recentApprovals = new ConcurrentHashMap<>();
 
     private final PaypalClient paypal;
     private final PaymentService service;
@@ -238,6 +246,18 @@ public class PaymentController {
             }
         }
 
+        /*
+         * The button pressed twice (or a request sent twice): the same order comes back and nothing new is created.
+         * This comes before the Fraud Guard, which would otherwise count the first order against the second.
+         */
+
+        PaymentRecord same = recentSameOrder(userId, to.key(), amountInr, method, homeExpenseId, homeDueDate,
+                HeController.type(body.get("heType")));
+
+        if (same != null) {
+            return ResponseEntity.ok(orderReply(same, recentApprovals.get(same.paymentId)));
+        }
+
         List<String> flags = flags(userId, to, amountInr);
 
         if (!flags.isEmpty() && !Boolean.TRUE.equals(body.get("confirmRisk"))) {
@@ -326,14 +346,13 @@ public class PaymentController {
             rec.status = "AWAITING_APPROVAL";
             payments.save(rec);
 
-            Map<String, Object> out = new HashMap<>();
-            out.put("paymentId", rec.paymentId);
-            out.put("orderId", orderId);
-            out.put("approvalUrl", approveUrl);
-            out.put("amountUsd", amountUsd);
-            out.put("recipientName", rec.recipientName);
+            if (recentApprovals.size() > 200) {
+                recentApprovals.clear();
+            }
 
-            return ResponseEntity.ok(out);
+            recentApprovals.put(rec.paymentId, approveUrl);
+
+            return ResponseEntity.ok(orderReply(rec, approveUrl));
 
         } catch (HttpStatusCodeException e) {
             log.error("PayPal rejected create-order: {} {}", e.getStatusCode(), e.getResponseBodyAsString());
@@ -352,6 +371,56 @@ public class PaymentController {
             payments.save(rec);
             return error(HttpStatus.BAD_GATEWAY, "Could not reach PayPal. Try again.");
         }
+    }
+
+    /** What the browser needs to send the user to PayPal. */
+    private static Map<String, Object> orderReply(PaymentRecord rec, String approvalUrl) {
+        Map<String, Object> out = new HashMap<>();
+        out.put("paymentId", rec.paymentId);
+        out.put("orderId", rec.orderId);
+        out.put("approvalUrl", approvalUrl);
+        out.put("amountUsd", rec.amountUsd);
+        out.put("recipientName", rec.recipientName);
+        return out;
+    }
+
+    /**
+     * The order this user made a moment ago for exactly the same payment (same receiver, amount, method and bill)
+     * that is still waiting for approval and whose approval address is known, or null.
+     */
+    private PaymentRecord recentSameOrder(Long userId, String key, BigDecimal amountInr, String method,
+            Long expenseId, String dueDate, String heType) {
+
+        Instant limit = Instant.now().minusSeconds(DOUBLE_CLICK_SECONDS);
+
+        for (PaymentRecord rec : payments.findByUserIdOrderByCreatedAtDesc(userId)) {
+            Instant at;
+
+            try {
+                at = Instant.parse(rec.createdAt);
+
+            } catch (RuntimeException e) {
+                continue;
+            }
+
+            if (at.isBefore(limit)) {
+                return null;   /* newest first: nothing older can be a double click */
+            }
+
+            if ("AWAITING_APPROVAL".equals(rec.status)
+                    && recentApprovals.containsKey(rec.paymentId)
+                    && Objects.equals(key, rec.recipientKey)
+                    && rec.amountInr != null && rec.amountInr.compareTo(amountInr) == 0
+                    && Objects.equals(method, rec.method)
+                    && Objects.equals(expenseId, rec.homeExpenseId)
+                    && Objects.equals(dueDate, rec.homeDueDate)
+                    && Objects.equals(heType, rec.heType)) {
+
+                return rec;
+            }
+        }
+
+        return null;
     }
 
     @PostMapping("/capture/{orderId}")
@@ -420,6 +489,11 @@ public class PaymentController {
                 String orderStatus = PaypalClient.text(order.get("status"));
 
                 if ("APPROVED".equals(orderStatus)) {
+                    /* Only a payment still open is captured; a failed, cancelled or pending one reports what it is. */
+                    if (!"AWAITING_APPROVAL".equals(rec.status)) {
+                        return ResponseEntity.ok(view(rec, userId));
+                    }
+
                     return captureLocked(paymentId, userId);
                 }
 
@@ -559,6 +633,15 @@ public class PaymentController {
 
             log.error("PayPal capture failed: {} {}", e.getStatusCode(), bodyText);
 
+            if (e.getStatusCode().value() == 429 || e.getStatusCode().value() >= 500) {
+                /*
+                 * PayPal is busy, not refusing: as far as Monetra knows the payment is neither captured nor failed.
+                 * It stays open, so the same capture can be asked again (PayPal answers a repeat with the first
+                 * result) or the order can be checked with Refresh.
+                 */
+                return error(HttpStatus.BAD_GATEWAY, recovery(e.getStatusCode().value()));
+            }
+
             rec.status = "FAILED";
             rec.message = limit(recovery(e.getStatusCode().value()) + " (PayPal said: " + PaypalClient.errorSummary(e) + ")");
             payments.save(rec);
@@ -610,6 +693,13 @@ public class PaymentController {
             if (!"COMPLETED".equals(rec.status)) {
                 service.completed(rec, PaypalClient.text(capture.get("id")));
             }
+
+        } else if ("COMPLETED".equals(orderStatus) && "PENDING".equals(captureStatus)
+                && "USD".equals(currency) && amountMatches) {
+
+            /* PayPal is holding the money for review: not paid yet, not failed either. Refresh or PayPal's webhook settles it. */
+            rec.status = "PENDING";
+            rec.message = "PayPal is still reviewing this payment, so it is not confirmed yet. Nothing is shown as paid until PayPal confirms it.";
 
         } else {
             log.warn("Capture not verified: order={} capture={} {} {}",
@@ -677,6 +767,9 @@ public class PaymentController {
         out.put("createdAt", rec.createdAt);
         out.put("payoutStatus", rec.payoutStatus);
         out.put("payoutMessage", rec.payoutMessage);
+
+        /* PayPal's own id of the money movement: only a confirmed payment has one. */
+        out.put("transactionId", "COMPLETED".equals(rec.status) ? rec.captureId : null);
 
         if (sent) {
             /* Only the sender sees this, and the number is the one they typed. Older records say "Contact 98xxxxxx10". */
