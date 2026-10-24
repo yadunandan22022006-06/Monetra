@@ -60,6 +60,10 @@ public class PaymentController {
     @Value("${monetra.inr-per-usd:88}")
     private BigDecimal inrPerUsd;
 
+    /** Whether the sign-in page shows the "Try the demo" button (see OtpAuthController.demo). */
+    @Value("${monetra.demo-login:false}")
+    private boolean demoLogin;
+
     /** A second click on the same payment within this time gets the first order back instead of a new one. */
     private static final long DOUBLE_CLICK_SECONDS = 8;
 
@@ -100,6 +104,8 @@ public class PaymentController {
         out.put("currency", "USD");
         out.put("paypalConfigured", paypal.configured());
         out.put("webhookConfigured", paypal.webhookConfigured());
+        /* The button only appears when the switch is on AND the demo account really exists on this server. */
+        out.put("demoLogin", demoLogin && users.findByEmail(DemoData.DEMO1_EMAIL).isPresent());
         return out;
     }
 

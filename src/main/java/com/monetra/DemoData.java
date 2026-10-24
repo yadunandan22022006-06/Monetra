@@ -25,6 +25,9 @@ public class DemoData implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DemoData.class);
 
+    /** The account the "Try the demo" button signs in (only when monetra.demo-login=true). */
+    static final String DEMO1_EMAIL = "demo1@monetra.test";
+
     private final UserAccountRepository users;
     private final UserDataRepository store;
     private final String password;
@@ -43,7 +46,7 @@ public class DemoData implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-        UserAccount asha = ensure(encoder, "demo1@monetra.test", "9000000001", "Asha Demo");
+        UserAccount asha = ensure(encoder, DEMO1_EMAIL, "9000000001", "Asha Demo");
 
         ensure(encoder, "demo2@monetra.test", "9000000002", "Ravi Demo");
 

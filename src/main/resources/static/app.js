@@ -93,7 +93,7 @@ const PARENT_VIEW = {
 };
 
 let me = { email: '', name: '', phone: '', paypalEmail: '' };
-let payConfig = { paypalConfigured: false, webhookConfigured: false };
+let payConfig = { paypalConfigured: false, webhookConfigured: false, demoLogin: false };
 let guardianTab = 'ai';
 let homeData = null;
 let homeMonth = '';
@@ -463,8 +463,12 @@ async function loadPaymentConfig() {
         if (config) {
             payConfig = {
                 paypalConfigured: !!config.paypalConfigured,
-                webhookConfigured: !!config.webhookConfigured
+                webhookConfigured: !!config.webhookConfigured,
+                demoLogin: !!config.demoLogin
             };
+
+            /* The "Try the demo" button exists only where the server switched it on. */
+            $('demoSignIn').classList.toggle('hidden', !payConfig.demoLogin);
         }
 
     } catch (error) {
@@ -744,15 +748,48 @@ $('loginForm').addEventListener('submit', async function(event) {
         if (response.ok) {
             rememberEmail(email);
 
-            const profile = await apiJson('/api/auth/me', {}, 8000);
-
-            await openDashboard(profile, pendingReturnKind());
-
-            /* A PayPal payment that could not be checked while nobody was signed in is checked now. */
-            await resumePaypalReturn();
+            await enterAfterSignIn();
 
         } else {
             message.textContent = result;
+        }
+
+    } catch (error) {
+        message.textContent = 'Cannot connect to the server. Make sure Monetra is running.';
+
+    } finally {
+        button.disabled = false;
+    }
+});
+
+/* What happens once the server has signed someone in: open their dashboard, then finish any PayPal payment that was waiting. */
+
+async function enterAfterSignIn() {
+    const profile = await apiJson('/api/auth/me', {}, 8000);
+
+    await openDashboard(profile, pendingReturnKind());
+
+    /* A PayPal payment that could not be checked while nobody was signed in is checked now. */
+    await resumePaypalReturn();
+}
+
+/* "Try Demo": the server signs in the demo account, and only that one, when it has the switch on. */
+
+$('demoSignIn').addEventListener('click', async function() {
+    const message = $('loginMessage');
+    const button = this;
+
+    message.textContent = 'Opening the demo...';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('/api/auth/demo', { method: 'POST' });
+
+        if (response.ok) {
+            await enterAfterSignIn();
+
+        } else {
+            message.textContent = await response.text();
         }
 
     } catch (error) {

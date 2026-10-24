@@ -40,6 +40,9 @@ private final AttemptLimiter signInTries = new AttemptLimiter(8, Duration.ofMinu
 /* 6 sign-up codes in 15 minutes from one address: the app cannot be used to send a pile of emails. */
 private final AttemptLimiter codeRequests = new AttemptLimiter(6, Duration.ofMinutes(15));
 
+/* The "Try the demo" button: 30 presses in 15 minutes from one address. */
+private final AttemptLimiter demoPresses = new AttemptLimiter(30, Duration.ofMinutes(15));
+
 /* A password that matches nobody, checked when the email is unknown, so an unknown email takes as long
    to answer as a known one. */
 private final String dummyHash = passwordEncoder.encode("this-matches-nobody");
@@ -56,17 +59,20 @@ private static final Logger log = LoggerFactory.getLogger(OtpAuthController.clas
 
 private final String mailUser;
 private final boolean logOtp;
+private final boolean demoLogin;
 
 public OtpAuthController(
         JavaMailSender mailSender,
         UserAccountRepository users,
         @Value("${spring.mail.username:}") String mailUser,
-        @Value("${monetra.log-otp:false}") boolean logOtp) {
+        @Value("${monetra.log-otp:false}") boolean logOtp,
+        @Value("${monetra.demo-login:false}") boolean demoLogin) {
 
     this.mailSender = mailSender;
     this.users = users;
     this.mailUser = mailUser;
     this.logOtp = logOtp;
+    this.demoLogin = demoLogin;
 }
 
 // STEP 1: SEND OTP TO EMAIL
@@ -309,6 +315,33 @@ public ResponseEntity<String> login(
     }
 
     signInTries.clear(tries);
+
+    SessionUser.login(httpRequest, user);
+
+    return ResponseEntity.ok("Login successful!");
+}
+
+// DEMO BUTTON: signs in the demo account and nobody else, with no password. Off unless monetra.demo-login=true
+// (for a public demo website that holds sample data only). Nothing in the request chooses who is signed in.
+@PostMapping("/demo")
+public ResponseEntity<String> demo(HttpServletRequest httpRequest) {
+    if (!demoLogin) {
+        return ResponseEntity.status(404).body("Demo sign-in is switched off on this server.");
+    }
+
+    String address = httpRequest.getRemoteAddr();
+
+    if (demoPresses.blocked(address)) {
+        return ResponseEntity.status(429).body("Too many tries. Please wait a few minutes.");
+    }
+
+    demoPresses.record(address);
+
+    UserAccount user = users.findByEmail(DemoData.DEMO1_EMAIL).orElse(null);
+
+    if (user == null) {
+        return ResponseEntity.status(404).body("The demo account is not set up on this server.");
+    }
 
     SessionUser.login(httpRequest, user);
 

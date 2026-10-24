@@ -306,6 +306,7 @@ The H2 file database lives on the container disk, so **data resets when the serv
 | `AI_PROVIDER` | `openai` or `anthropic` to force one (empty chooses automatically) |
 | `MONETRA_SEED_DEMO_USERS` | `true` creates the demo accounts |
 | `MONETRA_DEMO_PASSWORD` | Password for the demo accounts |
+| `MONETRA_DEMO_LOGIN` | `true` shows a "Try Demo" button on the sign-in page. One press signs in `demo1@monetra.test` only (nothing in the request can choose another account), at most 30 presses in 15 minutes per address, and only if that demo account exists. Off unless set. For a public demo site that holds sample data only. `start-local.ps1` turns it on for your own computer. |
 | `MONETRA_MAIL_USERNAME`, `MONETRA_MAIL_PASSWORD` | Gmail SMTP (App Password) for registration OTP emails (optional) |
 | `MONETRA_COOKIE_SECURE` | `true` when the site is served over https (online): the login cookie is then never sent over plain http |
 | `MONETRA_LOG_OTP` | `true` prints the OTP in the server console when email is not set up (local development only) |

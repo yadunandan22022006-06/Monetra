@@ -84,6 +84,9 @@ button[type="submit"]:hover,
     color: var(--ink);
 }
 
+/* The sign-in page's "Try the demo" button: full width, under the Sign In button */
+#demoSignIn { width: 100%; margin-top: 12px; }
+
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* ---------- fields ---------- */
