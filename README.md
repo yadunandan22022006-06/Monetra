@@ -172,6 +172,8 @@ Only **one copy** can run at a time: the database file is locked, and a second c
 
 The demo password is `MonetraDemo#2026` (change it with `MONETRA_DEMO_PASSWORD`). These accounts are for testing only. Do not enable the seed on a real deployment.
 
+**Putting the Try Demo account back to its sample data** (for example before recording a video): stop Monetra, then start it once with `MONETRA_DEMO_RESET=true` (with `start-local.ps1`: add `-ResetDemo`). On that start `demo1@monetra.test` loses its own saved data (expenses, loans, goals, notifications, scores, badges and so on) and gets the sample data again. It only ever touches that one account: nobody else's data, the accounts themselves (email sign-in, phone numbers, OTP) and the PayPal payment records are left exactly as they are. It exists only where the demo accounts are switched on, has no web address, and is switched off again on the next normal start.
+
 **Suggested demo flow (uses all three main features)**
 
 1. Log in as `demo1` in one window and as `demo2` in a private window.
@@ -307,6 +309,7 @@ The H2 file database lives on the container disk, so **data resets when the serv
 | `MONETRA_SEED_DEMO_USERS` | `true` creates the demo accounts |
 | `MONETRA_DEMO_PASSWORD` | Password for the demo accounts |
 | `MONETRA_DEMO_LOGIN` | `true` shows a "Try Demo" button on the sign-in page. One press signs in `demo1@monetra.test` only (nothing in the request can choose another account), at most 30 presses in 15 minutes per address, and only if that demo account exists. Off unless set. For a public demo site that holds sample data only. `start-local.ps1` turns it on for your own computer. |
+| `MONETRA_DEMO_RESET` | `true` puts `demo1@monetra.test` back to its sample data when the server starts: that account's own data only, never anyone else's and never the PayPal payment records. Needs `MONETRA_SEED_DEMO_USERS=true`. Off unless set; turn it off again after one start. |
 | `MONETRA_MAIL_USERNAME`, `MONETRA_MAIL_PASSWORD` | Gmail SMTP (App Password) for registration OTP emails (optional) |
 | `MONETRA_COOKIE_SECURE` | `true` when the site is served over https (online): the login cookie is then never sent over plain http |
 | `MONETRA_LOG_OTP` | `true` prints the OTP in the server console when email is not set up (local development only) |

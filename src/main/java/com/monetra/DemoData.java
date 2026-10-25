@@ -31,15 +31,21 @@ public class DemoData implements ApplicationRunner {
     private final UserAccountRepository users;
     private final UserDataRepository store;
     private final String password;
+    private final DemoReset reset;
+    private final boolean resetOnStart;
 
     public DemoData(
             UserAccountRepository users,
             UserDataRepository store,
-            @Value("${monetra.demo-password}") String password) {
+            @Value("${monetra.demo-password}") String password,
+            DemoReset reset,
+            @Value("${monetra.demo-reset:false}") boolean resetOnStart) {
 
         this.users = users;
         this.store = store;
         this.password = password;
+        this.reset = reset;
+        this.resetOnStart = resetOnStart;
     }
 
     @Override
@@ -49,6 +55,11 @@ public class DemoData implements ApplicationRunner {
         UserAccount asha = ensure(encoder, DEMO1_EMAIL, "9000000001", "Asha Demo");
 
         ensure(encoder, "demo2@monetra.test", "9000000002", "Ravi Demo");
+
+        /* Only when asked for (monetra.demo-reset=true): demo1's own data goes back to the sample. Nobody else's. */
+        if (resetOnStart) {
+            reset.resetDemoAccount();
+        }
 
         if (store.findById(asha.getId()).isEmpty()) {
             store.save(new UserData(asha.getId(), sampleRecords()));
@@ -62,7 +73,7 @@ public class DemoData implements ApplicationRunner {
                 .orElseGet(() -> users.save(new UserAccount(email, encoder.encode(password), phone, name)));
     }
 
-    private static String sampleRecords() {
+    static String sampleRecords() {
         LocalDate today = LocalDate.now();
 
         return "{"
