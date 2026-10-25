@@ -3216,3 +3216,26 @@ body:not(.auth-mode) { background: #f4f2ec; }
 /* A home expense (HE) payment being confirmed: only the waiting card shows, not the HE form. */
 
 #heView.confirming .subtabs, #heView.confirming .tab-panel { display: none; }
+
+/* ==========================================================
+   BACK FROM PAYPAL
+   PayPal sends the user back with a full page load. Until the server says who is signed in, the page shows
+   a light "confirming your payment" card in the app's own look, not the navy sign-in page (which looked
+   like being signed out). If nobody is signed in, app.js removes paypal-return and the sign-in page shows.
+   ========================================================== */
+
+body.auth-mode.paypal-return { background: #f4f2ec; }
+
+body.paypal-return.session-check .auth-screen .wordmark { display: none; }
+
+body.paypal-return .session-check-box {
+    background: #ffffff;
+    border: 1px solid #e8e4da;
+    border-radius: 20px;
+    padding: 30px 24px;
+    box-shadow: 0 10px 30px rgba(15, 27, 61, 0.08);
+}
+
+body.paypal-return .session-check-box p { color: #0f1b3d; font-size: 16px; font-weight: 600; }
+
+body.paypal-return .session-check-box::before { border-color: rgba(15, 27, 61, 0.12); border-top-color: #b07d1f; }

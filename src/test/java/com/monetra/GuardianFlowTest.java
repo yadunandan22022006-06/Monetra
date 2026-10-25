@@ -190,6 +190,12 @@ class GuardianFlowTest {
 		assertEquals(400, gita.put("/api/data", "{\"goals\":[{\"name\":\"Bad\",\"target\":0,\"saved\":0}]}").statusCode());
 		assertEquals(400, gita.put("/api/data", "{\"profile\":{\"payday\":45}}").statusCode());
 
+		/* A list or group in the wrong shape is refused, not stored. */
+		assertEquals(400, gita.put("/api/data", "{\"expenses\":\"not a list\"}").statusCode());
+		assertEquals(400, gita.put("/api/data", "{\"loans\":{\"a\":{\"name\":\"X\",\"amount\":500}}}").statusCode());
+		assertEquals(400, gita.put("/api/data", "{\"limits\":[500]}").statusCode());
+		assertEquals(400, gita.put("/api/data", "{\"profile\":\"rich\"}").statusCode());
+
 		/* Records from before the upgrade (a loan with just a name, an EMI and a date) are still accepted. */
 		assertEquals(200, gita.put("/api/data", "{\"loans\":[{\"name\":\"Old\",\"amount\":500,\"due\":\"2026-11-05\",\"notes\":\"\"}],"
 				+ "\"goals\":[{\"name\":\"Old goal\",\"target\":1000,\"saved\":0}]}").statusCode());

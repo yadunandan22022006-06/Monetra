@@ -28,6 +28,23 @@ public final class RecordsValidator {
 
     /** A message for the user when something is wrong, or null when the records are fine. */
     public static String problem(JsonNode records) {
+        /* The lists must be lists and the groups must be groups (the page always sends them so). */
+        for (String list : new String[] {"loans", "goals", "expenses", "income", "savings", "payments"}) {
+            JsonNode node = records.path(list);
+
+            if (!node.isMissingNode() && !node.isNull() && !node.isArray()) {
+                return "Your records could not be saved: the " + list + " part is not in the expected format.";
+            }
+        }
+
+        for (String group : new String[] {"limits", "profile"}) {
+            JsonNode node = records.path(group);
+
+            if (!node.isMissingNode() && !node.isNull() && !node.isObject()) {
+                return "Your records could not be saved: the " + group + " part is not in the expected format.";
+            }
+        }
+
         JsonNode loans = records.path("loans");
 
         if (loans.size() > MAX_ITEMS || records.path("goals").size() > MAX_ITEMS) {

@@ -14,6 +14,8 @@
 </head>
 
 <body class="auth-mode session-check">
+<!-- Back from PayPal: the light "confirming" look from the first paint, never the navy sign-in page -->
+<script>if (/[?&]paypal=/.test(location.search)) document.body.classList.add('paypal-return');</script>
 
 <!-- SVG icon sprite -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">

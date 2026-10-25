@@ -271,6 +271,9 @@ function askBox(message, yesText, noText, startValue, cards, extras) {
         askDone(false);
     }
 
+    /* Keyboard users go back to the button that opened the question when it closes. */
+    const opener = document.activeElement;
+
     /* Red warning boxes, when the question comes with some (see guardianAlertCards). */
 
     const cardsBox = $('askCards');
@@ -309,6 +312,10 @@ function askBox(message, yesText, noText, startValue, cards, extras) {
             askDone = null;
 
             $('askBox').classList.add('hidden');
+
+            if (opener && opener !== document.body && document.contains(opener)) {
+                opener.focus({ preventScroll: true });
+            }
 
             resolve(wantsText ? (yes ? input.value : null) : yes);
         };
@@ -890,7 +897,7 @@ async function openDashboard(profile, returning, recordsEarly) {
     $('authCard').classList.add('hidden');
     $('dashboardPage').classList.remove('hidden');
 
-    document.body.classList.remove('auth-mode', 'session-check');
+    document.body.classList.remove('auth-mode', 'session-check', 'paypal-return');
 
     queueBand();
 
@@ -7446,7 +7453,8 @@ async function init() {
     }
 
     if (!profile || !profile.email) {
-        document.body.classList.remove('session-check');
+        /* Nobody signed in: the normal (navy) sign-in page, not the "confirming" look. */
+        document.body.classList.remove('session-check', 'paypal-return');
 
         if (returning) {
             /* Nobody is signed in: keep the details, and finish the check after sign-in. */
